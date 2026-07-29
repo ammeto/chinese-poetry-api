@@ -217,16 +217,14 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 
 	// Start workers to process poems (CPU-intensive work)
 	for i := range p.workers {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
+		wg.Go(func() {
 			for work := range workCh {
 				poem, err := p.processPoem(work)
 				if err != nil {
 					errorCount.Add(1)
 					// Non-blocking error recording
 					select {
-					case errorCh <- fmt.Errorf("worker %d: %s - %w", workerID, work.Title, err):
+					case errorCh <- fmt.Errorf("worker %d: %s - %w", i, work.Title, err):
 					default:
 						// Discard error to avoid blocking
 					}
@@ -247,7 +245,7 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 				processed.Add(1)
 				bar.Increment()
 			}
-		}(i)
+		})
 	}
 
 	// Start batch inserter goroutine
