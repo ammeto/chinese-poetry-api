@@ -76,6 +76,21 @@ func TestGetPoetryTypeIDs(t *testing.T) {
 			inputNames:  []string{"五言绝句", "不存在的类型"},
 			expectError: true,
 		},
+		{
+			// A repeated name collapses to one row in the IN clause. Comparing
+			// the row count against len(names) used to reject this, surfacing
+			// as a 404 for ?type=五言绝句&type=五言绝句.
+			name:          "repeated name",
+			inputNames:    []string{"五言绝句", "五言绝句"},
+			expectError:   false,
+			expectedCount: 2,
+		},
+		{
+			name:          "repeated name mixed with a distinct one",
+			inputNames:    []string{"五言绝句", "七言绝句", "五言绝句"},
+			expectError:   false,
+			expectedCount: 3,
+		},
 	}
 
 	for _, tt := range tests {

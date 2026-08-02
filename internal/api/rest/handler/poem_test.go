@@ -210,6 +210,14 @@ func TestListPoemsFilters(t *testing.T) {
 	t.Run("repeated type_id is combined with OR", func(t *testing.T) {
 		assert.Equal(t, []string{"静夜思", "早发白帝城", "题西林壁"}, titles(t, "?type_id=11&type_id=12", http.StatusOK))
 		assert.Equal(t, []string{"早发白帝城", "题西林壁"}, titles(t, "?type_id=12", http.StatusOK))
+		assert.Equal(t, []string{"静夜思", "早发白帝城", "题西林壁"}, titles(t, "?type=五言绝句&type=七言绝句", http.StatusOK))
+	})
+
+	t.Run("a repeated type is not an error", func(t *testing.T) {
+		// The same name twice collapses to one row in the IN clause used to
+		// resolve names to ids, which used to be misread as "type not found".
+		assert.Equal(t, []string{"静夜思"}, titles(t, "?type=五言绝句&type=五言绝句", http.StatusOK))
+		assert.Equal(t, []string{"静夜思"}, titles(t, "?type_id=11&type_id=11", http.StatusOK))
 	})
 
 	t.Run("misspelled and malformed filters are rejected", func(t *testing.T) {

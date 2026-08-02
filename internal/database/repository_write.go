@@ -98,10 +98,10 @@ func (r *Repository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 		return nil, err
 	}
 
-	// Check if we found all requested types
-	if len(poetryTypes) != len(names) {
-		return nil, gorm.ErrRecordNotFound
-	}
+	// Note: the row count is deliberately not compared against len(names).
+	// Repeated names (?type=五言绝句&type=五言绝句) collapse to one row in the
+	// IN clause, so such a comparison rejects a perfectly valid request. The
+	// per-name lookup below already reports any name that is genuinely missing.
 
 	// Create a map for O(1) lookup
 	typeMap := make(map[string]int64, len(poetryTypes))
