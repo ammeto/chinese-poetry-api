@@ -11,11 +11,15 @@ func (r *Repository) GetAuthorsWithStats(limit, offset int) ([]AuthorWithStats, 
 	var authors []AuthorWithStats
 
 	// Pre-aggregate poem counts by author_id, then join authors for pagination.
+	//
+	// id breaks ties on poem_count. Without it the order among the many authors
+	// sharing a count is unspecified, which lets LIMIT/OFFSET paging repeat and
+	// skip authors as the plan changes.
 	err := r.db.Table(authorTable).
 		Select(authorTable + ".*, COUNT(" + poemTable + ".id) AS poem_count").
 		Joins("LEFT JOIN " + poemTable + " ON " + authorTable + ".id = " + poemTable + ".author_id").
 		Group(authorTable + ".id").
-		Order("poem_count DESC").
+		Order("poem_count DESC, " + authorTable + ".id ASC").
 		Limit(limit).
 		Offset(offset).
 		Find(&authors).Error
@@ -124,7 +128,7 @@ func (r *Repository) GetDynastiesWithStats() ([]DynastyWithStats, error) {
 		Select(dynastyTable + ".*, " +
 			"(SELECT COUNT(*) FROM " + poemTable + " WHERE " + poemTable + ".dynasty_id = " + dynastyTable + ".id) as poem_count, " +
 			"(SELECT COUNT(*) FROM " + authorTable + " WHERE " + authorTable + ".dynasty_id = " + dynastyTable + ".id) as author_count").
-		Order("poem_count DESC").
+		Order("poem_count DESC, " + dynastyTable + ".id ASC").
 		Find(&dynasties).Error
 
 	return dynasties, err
@@ -171,7 +175,7 @@ func (r *Repository) GetPoetryTypesWithStats() ([]PoetryTypeWithStats, error) {
 	// Use subquery for better performance on large datasets
 	err := r.db.Table(typeTable).
 		Select(typeTable + ".*, (SELECT COUNT(*) FROM " + poemTable + " WHERE " + poemTable + ".type_id = " + typeTable + ".id) as poem_count").
-		Order("poem_count DESC").
+		Order("poem_count DESC, " + typeTable + ".id ASC").
 		Find(&types).Error
 
 	return types, err

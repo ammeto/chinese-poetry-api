@@ -2,6 +2,7 @@ package integration
 
 import (
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/99designs/gqlgen/client"
@@ -122,6 +123,112 @@ func TestGraphQLLangSelectsVariant(t *testing.T) {
 		err := c.Post(`query { poems(lang: ZH_HANZ) { totalCount } }`, &resp)
 		require.Error(t, err)
 	})
+}
+
+// TestSearchPoemsCursors covers searchPoems' connection, which it used to build
+// by hand: cursors were numbered from 0 within each page, so page 2's first edge
+// carried the same cursor as page 1's, and startCursor/endCursor were left unset
+// even though every other connection populates them.
+func TestSearchPoemsCursors(t *testing.T) {
+	c, repo := setupLangTestEnv(t)
+
+	dynastyID, err := repo.GetOrCreateDynasty("唐")
+	require.NoError(t, err)
+	authorID, err := repo.GetOrCreateAuthor("李白", dynastyID)
+	require.NoError(t, err)
+	for i := range 4 {
+		require.NoError(t, repo.InsertPoem(&database.Poem{
+			ID:        int64(i + 1),
+			Title:     "春日" + string(rune('A'+i)),
+			Content:   datatypes.JSON([]byte(`["春风"]`)),
+			AuthorID:  &authorID,
+			DynastyID: &dynastyID,
+		}))
+	}
+
+	page := func(n int) (cursors []string, start, end *string) {
+		var resp struct {
+			SearchPoems struct {
+				Edges []struct {
+					Cursor string
+					Node   struct{ Title string }
+				}
+				PageInfo struct {
+					StartCursor *string
+					EndCursor   *string
+				}
+			}
+		}
+		q := `query { searchPoems(query: "春日", page: ` + strconv.Itoa(n) + `, pageSize: 2) {
+			edges { cursor node { title } }
+			pageInfo { startCursor endCursor }
+		} }`
+		require.NoError(t, c.Post(q, &resp))
+
+		for _, e := range resp.SearchPoems.Edges {
+			cursors = append(cursors, e.Cursor)
+		}
+		return cursors, resp.SearchPoems.PageInfo.StartCursor, resp.SearchPoems.PageInfo.EndCursor
+	}
+
+	first, start1, end1 := page(1)
+	second, start2, _ := page(2)
+
+	assert.Equal(t, []string{"0", "1"}, first)
+	assert.Equal(t, []string{"2", "3"}, second, "page 2 cursors must continue from page 1, not restart at 0")
+
+	require.NotNil(t, start1)
+	require.NotNil(t, end1)
+	require.NotNil(t, start2)
+	assert.Equal(t, "0", *start1)
+	assert.Equal(t, "1", *end1)
+	assert.Equal(t, "2", *start2)
+}
+
+// TestAuthorListingTieBreak covers paging over authors whose poem_count ties.
+// Ordering by poem_count alone is not a total order, so which of the tied rows
+// a given LIMIT/OFFSET window returns is unspecified.
+func TestAuthorListingTieBreak(t *testing.T) {
+	c, repo := setupLangTestEnv(t)
+
+	dynastyID, err := repo.GetOrCreateDynasty("唐")
+	require.NoError(t, err)
+
+	// Every author gets exactly one poem, so poem_count ties across all of them.
+	const authorCount = 12
+	for i := range authorCount {
+		name := "作者" + strconv.Itoa(i)
+		authorID, err := repo.GetOrCreateAuthor(name, dynastyID)
+		require.NoError(t, err)
+		require.NoError(t, repo.InsertPoem(&database.Poem{
+			ID:        int64(i + 1),
+			Title:     "诗" + strconv.Itoa(i),
+			Content:   datatypes.JSON([]byte(`["内容"]`)),
+			AuthorID:  &authorID,
+			DynastyID: &dynastyID,
+		}))
+	}
+
+	seen := map[string]int{}
+	for page := 1; page <= authorCount/3; page++ {
+		var resp struct {
+			Authors struct {
+				Edges []struct {
+					Node struct{ Name string }
+				}
+			}
+		}
+		q := `query { authors(page: ` + strconv.Itoa(page) + `, pageSize: 3) { edges { node { name } } } }`
+		require.NoError(t, c.Post(q, &resp))
+		for _, e := range resp.Authors.Edges {
+			seen[e.Node.Name]++
+		}
+	}
+
+	require.Len(t, seen, authorCount, "paging must visit every author exactly once")
+	for name, n := range seen {
+		assert.Equal(t, 1, n, "%s appeared on more than one page", name)
+	}
 }
 
 // TestGraphQLCountFields covers the poemCount/authorCount fields, which counted

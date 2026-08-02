@@ -151,20 +151,11 @@ func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *dat
 		return nil, err
 	}
 
-	edges := make([]database.PoemEdge, len(poems))
-	for i, poem := range poems {
-		edges[i] = database.PoemEdge{
-			Node:   poem,
-			Cursor: strconv.Itoa(i),
-		}
-	}
-
-	hasMore := (pag.Page * pag.PageSize) < int(total)
-	return &database.PoemConnection{
-		Edges:      edges,
-		PageInfo:   database.PageInfo{HasNextPage: hasMore, HasPreviousPage: pag.Page > 1},
-		TotalCount: int(total),
-	}, nil
+	// Build the connection with the shared helper rather than by hand. The
+	// hand-rolled version numbered cursors from 0 within each page, so page 2's
+	// first edge carried the same cursor as page 1's, and it left startCursor
+	// and endCursor unset while every other connection populates them.
+	return buildPoemConnection(poems, pag, int(total)), nil
 }
 
 // RandomPoem is the resolver for the randomPoem field.

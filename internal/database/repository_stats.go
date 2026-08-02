@@ -89,7 +89,7 @@ func (r *Repository) GetStatistics() (*Statistics, error) {
 		Select(dynastyTable + ".*, COUNT(" + poemTable + ".id) as poem_count").
 		Joins("LEFT JOIN " + poemTable + " ON " + dynastyTable + ".id = " + poemTable + ".dynasty_id").
 		Group(dynastyTable + ".id").
-		Order("poem_count DESC").
+		Order("poem_count DESC, " + dynastyTable + ".id ASC").
 		Scan(&dynastyStats).Error
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (r *Repository) GetStatistics() (*Statistics, error) {
 		Select(typeTable + ".*, COUNT(" + poemTable + ".id) as poem_count").
 		Joins("LEFT JOIN " + poemTable + " ON " + typeTable + ".id = " + poemTable + ".type_id").
 		Group(typeTable + ".id").
-		Order("poem_count DESC").
+		Order("poem_count DESC, " + typeTable + ".id ASC").
 		Scan(&typeStats).Error
 	if err != nil {
 		return nil, err
@@ -158,7 +158,7 @@ func (r *Repository) ListAuthorsWithFilter(limit, offset int, dynastyID *int64) 
 		Select(authorTable + ".*, COUNT(" + poemTable + ".id) as poem_count").
 		Joins("LEFT JOIN " + poemTable + " ON " + authorTable + ".id = " + poemTable + ".author_id").
 		Group(authorTable + ".id").
-		Order("poem_count DESC").
+		Order("poem_count DESC, " + authorTable + ".id ASC").
 		Limit(limit).Offset(offset).
 		Scan(&results).Error
 	if err != nil {
