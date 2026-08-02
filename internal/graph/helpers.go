@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/palemoky/chinese-poetry-api/internal/database"
@@ -14,25 +15,43 @@ type Pagination struct {
 	Offset   int
 }
 
+// Pagination defaults and bounds, kept in step with the REST handler's.
+const (
+	defaultPage     = 1
+	defaultPageSize = 20
+	maxPageSize     = 100
+)
+
 // parsePagination extracts and validates pagination parameters with defaults.
 // Default: page=1, pageSize=20, max pageSize=100
-func parsePagination(page, pageSize *int) Pagination {
-	p := 1
-	if page != nil && *page > 0 {
+//
+// Out-of-range values are an error rather than being clamped, so that a client
+// asking for pageSize: 1000 finds out its request was not honoured. Clamping
+// also left the cap unenforced wherever a resolver read the arguments directly
+// instead of calling this, which is how searchPoems ended up able to request an
+// unbounded number of rows.
+func parsePagination(page, pageSize *int) (Pagination, error) {
+	p := defaultPage
+	if page != nil {
+		if *page < 1 {
+			return Pagination{}, fmt.Errorf("page must be at least 1, got %d", *page)
+		}
 		p = *page
 	}
-	ps := 20
-	if pageSize != nil && *pageSize > 0 {
-		ps = *pageSize
-		if ps > 100 {
-			ps = 100
+
+	ps := defaultPageSize
+	if pageSize != nil {
+		if *pageSize < 1 || *pageSize > maxPageSize {
+			return Pagination{}, fmt.Errorf("pageSize must be between 1 and %d, got %d", maxPageSize, *pageSize)
 		}
+		ps = *pageSize
 	}
+
 	return Pagination{
 		Page:     p,
 		PageSize: ps,
 		Offset:   (p - 1) * ps,
-	}
+	}, nil
 }
 
 // parseOptionalID parses an optional string ID to int64 pointer.

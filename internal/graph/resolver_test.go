@@ -277,6 +277,23 @@ func TestRandomPoemQuery(t *testing.T) {
 		// Should return a poem since we have data
 		assert.NotNil(t, resp.RandomPoem)
 	})
+
+	// A malformed id used to be discarded, so the filter silently widened to
+	// the whole corpus and a random unrelated poem came back with no error.
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"malformed dynastyId is rejected", `query { randomPoem(dynastyId: "abc") { title } }`},
+		{"malformed typeId is rejected", `query { randomPoem(typeId: "1.5") { title } }`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var resp struct{}
+			err := c.Post(tc.query, &resp)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid syntax")
+		})
+	}
 }
 
 // Integration test for context passing
@@ -444,67 +461,36 @@ func TestPaginationBoundaries(t *testing.T) {
 	createExtendedTestData(t, resolver, repo)
 	c := createTestClient(t, resolver)
 
-	t.Run("page 0 defaults to page 1", func(t *testing.T) {
+	// Out-of-range pagination is an error rather than being clamped, so a
+	// client asking for pageSize: 500 finds out it did not get 500 rows.
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"page 0 is rejected", `query { poems(page: 0) { totalCount } }`, "page must be at least 1"},
+		{"negative page is rejected", `query { poems(page: -1) { totalCount } }`, "page must be at least 1"},
+		{"pageSize 0 is rejected", `query { poems(pageSize: 0) { totalCount } }`, "pageSize must be between"},
+		{"pageSize above the cap is rejected", `query { poems(pageSize: 500) { totalCount } }`, "pageSize must be between"},
+		// searchPoems read the arguments directly and enforced no cap at all.
+		{"searchPoems pageSize above the cap is rejected", `query { searchPoems(query: "李白", pageSize: 1000000) { totalCount } }`, "pageSize must be between"},
+		{"authors pageSize above the cap is rejected", `query { authors(pageSize: 500) { totalCount } }`, "pageSize must be between"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var resp struct{}
+			err := c.Post(tc.query, &resp)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+
+	t.Run("pageSize at the cap is accepted", func(t *testing.T) {
 		var resp struct {
 			Poems struct {
-				PageInfo struct {
-					HasPreviousPage bool
-				}
 				TotalCount int
 			}
 		}
-
-		err := c.Post(`query { poems(page: 0) { pageInfo { hasPreviousPage } totalCount } }`, &resp)
-		require.NoError(t, err)
-		assert.False(t, resp.Poems.PageInfo.HasPreviousPage)
-	})
-
-	t.Run("negative page defaults to page 1", func(t *testing.T) {
-		var resp struct {
-			Poems struct {
-				PageInfo struct {
-					HasPreviousPage bool
-				}
-			}
-		}
-
-		err := c.Post(`query { poems(page: -1) { pageInfo { hasPreviousPage } } }`, &resp)
-		require.NoError(t, err)
-		assert.False(t, resp.Poems.PageInfo.HasPreviousPage)
-	})
-
-	t.Run("pageSize 0 defaults to 20", func(t *testing.T) {
-		var resp struct {
-			Poems struct {
-				Edges []struct {
-					Node struct {
-						Title string
-					}
-				}
-			}
-		}
-
-		err := c.Post(`query { poems(pageSize: 0) { edges { node { title } } } }`, &resp)
-		require.NoError(t, err)
-		// Should return all 3 poems since default is 20
-		assert.GreaterOrEqual(t, len(resp.Poems.Edges), 1)
-	})
-
-	t.Run("very large pageSize is capped at 100", func(t *testing.T) {
-		var resp struct {
-			Poems struct {
-				Edges []struct {
-					Node struct {
-						Title string
-					}
-				}
-			}
-		}
-
-		err := c.Post(`query { poems(pageSize: 500) { edges { node { title } } } }`, &resp)
-		require.NoError(t, err)
-		// Should still work, just capped
-		assert.NotNil(t, resp.Poems.Edges)
+		require.NoError(t, c.Post(`query { poems(pageSize: 100) { totalCount } }`, &resp))
 	})
 
 	t.Run("hasNextPage is true when more data exists", func(t *testing.T) {

@@ -17,7 +17,10 @@ import (
 
 // Poems is the resolver for the poems field.
 func (r *authorResolver) Poems(ctx context.Context, obj *database.Author, page *int, pageSize *int) (*database.PoemConnection, error) {
-	pag := parsePagination(page, pageSize)
+	pag, err := parsePagination(page, pageSize)
+	if err != nil {
+		return nil, err
+	}
 
 	poems, totalCount, err := r.Repo.ListAuthorPoems(obj.ID, pag.PageSize, pag.Offset)
 	if err != nil {
@@ -80,7 +83,10 @@ func (r *queryResolver) Poem(ctx context.Context, id string, lang *database.Lang
 
 // Poems is the resolver for the poems field.
 func (r *queryResolver) Poems(ctx context.Context, lang *database.Lang, page *int, pageSize *int, dynastyID *string, authorID *string, typeID *string) (*database.PoemConnection, error) {
-	pag := parsePagination(page, pageSize)
+	pag, err := parsePagination(page, pageSize)
+	if err != nil {
+		return nil, err
+	}
 
 	// Parse filter IDs
 	dynastyIDInt, err := parseOptionalID(dynastyID)
@@ -113,13 +119,11 @@ func (r *queryResolver) Poems(ctx context.Context, lang *database.Lang, page *in
 
 // SearchPoems is the resolver for the searchPoems field.
 func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *database.Lang, searchType *model.SearchType, page *int, pageSize *int) (*database.PoemConnection, error) {
-	p := 1
-	if page != nil {
-		p = *page
-	}
-	ps := 20
-	if pageSize != nil {
-		ps = *pageSize
+	// Use the shared helper rather than reading the arguments directly, which
+	// is what let this resolver bypass the pageSize cap the others enforce.
+	pag, err := parsePagination(page, pageSize)
+	if err != nil {
+		return nil, err
 	}
 
 	// Map GraphQL search type to repository search type
@@ -138,7 +142,7 @@ func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *dat
 	// Use repository's SearchPoems with language context
 	langVal := parseLang(lang)
 	repo := r.Repo.WithLang(langVal)
-	poems, total, err := repo.SearchPoems(query, st, p, ps)
+	poems, total, err := repo.SearchPoems(query, st, pag.Page, pag.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -151,31 +155,31 @@ func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *dat
 		}
 	}
 
-	hasMore := (p * ps) < int(total)
+	hasMore := (pag.Page * pag.PageSize) < int(total)
 	return &database.PoemConnection{
 		Edges:      edges,
-		PageInfo:   database.PageInfo{HasNextPage: hasMore, HasPreviousPage: p > 1},
+		PageInfo:   database.PageInfo{HasNextPage: hasMore, HasPreviousPage: pag.Page > 1},
 		TotalCount: int(total),
 	}, nil
 }
 
 // RandomPoem is the resolver for the randomPoem field.
 func (r *queryResolver) RandomPoem(ctx context.Context, lang *database.Lang, dynastyID *string, typeID *string) (*database.Poem, error) {
-	// Parse filter IDs
-	var dynastyIDInt *int64
-	var typeIDs []int64
-
-	if dynastyID != nil {
-		id, err := strconv.ParseInt(*dynastyID, 10, 64)
-		if err == nil {
-			dynastyIDInt = &id
-		}
+	// Parse filter IDs. A malformed id is an error, not a filter to drop: a
+	// discarded filter used to widen the query to the whole corpus and return
+	// an unrelated poem, which is indistinguishable from a working request.
+	dynastyIDInt, err := parseOptionalID(dynastyID)
+	if err != nil {
+		return nil, err
 	}
-	if typeID != nil {
-		id, err := strconv.ParseInt(*typeID, 10, 64)
-		if err == nil {
-			typeIDs = []int64{id}
-		}
+
+	typeIDInt, err := parseOptionalID(typeID)
+	if err != nil {
+		return nil, err
+	}
+	var typeIDs []int64
+	if typeIDInt != nil {
+		typeIDs = []int64{*typeIDInt}
 	}
 
 	// Use repository's GetRandomPoem with language context (same as REST)
@@ -197,7 +201,10 @@ func (r *queryResolver) Author(ctx context.Context, id string, lang *database.La
 
 // Authors is the resolver for the authors field.
 func (r *queryResolver) Authors(ctx context.Context, lang *database.Lang, page *int, pageSize *int, dynastyID *string) (*database.AuthorConnection, error) {
-	pag := parsePagination(page, pageSize)
+	pag, err := parsePagination(page, pageSize)
+	if err != nil {
+		return nil, err
+	}
 
 	dynastyIDInt, err := parseOptionalID(dynastyID)
 	if err != nil {
