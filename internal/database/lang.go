@@ -1,5 +1,10 @@
 package database
 
+import (
+	"fmt"
+	"io"
+)
+
 // Lang represents the language variant for Chinese text
 type Lang string
 
@@ -51,6 +56,46 @@ func ParseLang(s string) Lang {
 func LookupLang(s string) (Lang, bool) {
 	lang, ok := langAliases[s]
 	return lang, ok
+}
+
+// GraphQL enum names for Lang, as declared by the Lang enum in schema.graphqls.
+const (
+	gqlLangHans = "ZH_HANS"
+	gqlLangHant = "ZH_HANT"
+)
+
+// UnmarshalGQL implements graphql.Unmarshaler so the schema's Lang enum maps
+// onto this type.
+//
+// Without it, gqlgen's autobind converts the enum name straight to Lang, giving
+// Lang("ZH_HANT") - a value that equals neither LangHans nor LangHant, so every
+// table helper fell through to its simplified branch and the lang argument had
+// no effect anywhere in the GraphQL API.
+func (l *Lang) UnmarshalGQL(v any) error {
+	name, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("Lang must be one of %s or %s, got %T", gqlLangHans, gqlLangHant, v)
+	}
+
+	switch name {
+	case gqlLangHans:
+		*l = LangHans
+	case gqlLangHant:
+		*l = LangHant
+	default:
+		return fmt.Errorf("Lang must be one of %s or %s, got %q", gqlLangHans, gqlLangHant, name)
+	}
+	return nil
+}
+
+// MarshalGQL implements graphql.Marshaler, writing the enum name rather than
+// the underlying "zh-Hans"/"zh-Hant" value, which is not a valid enum literal.
+func (l Lang) MarshalGQL(w io.Writer) {
+	name := gqlLangHans
+	if l == LangHant {
+		name = gqlLangHant
+	}
+	fmt.Fprintf(w, "%q", name)
 }
 
 // Table name helpers - these help construct table names with language suffix

@@ -16,6 +16,43 @@ func (r *Repository) CountAuthors() (int, error) {
 	return int(count), err
 }
 
+// CountPoemsByAuthor returns the number of poems attributed to an author.
+func (r *Repository) CountPoemsByAuthor(authorID int64) (int, error) {
+	return r.countPoemsWhere("author_id = ?", authorID)
+}
+
+// CountPoemsByDynasty returns the number of poems from a dynasty.
+func (r *Repository) CountPoemsByDynasty(dynastyID int64) (int, error) {
+	return r.countPoemsWhere("dynasty_id = ?", dynastyID)
+}
+
+// CountPoemsByType returns the number of poems of a poetry type.
+func (r *Repository) CountPoemsByType(typeID int64) (int, error) {
+	return r.countPoemsWhere("type_id = ?", typeID)
+}
+
+// CountAuthorsByDynasty returns the number of distinct authors with at least
+// one poem in a dynasty.
+func (r *Repository) CountAuthorsByDynasty(dynastyID int64) (int, error) {
+	var count int64
+	err := r.db.Table(r.poemsTable()).
+		Where("dynasty_id = ?", dynastyID).
+		Distinct("author_id").
+		Count(&count).Error
+	return int(count), err
+}
+
+// countPoemsWhere counts poems matching a single condition. It exists so these
+// counts go through poemsTable() like every other query: the GraphQL resolvers
+// used to count via db.Model(&Poem{}), which resolves to Poem.TableName() -
+// the legacy unsuffixed "poems", a table that no longer exists after the
+// language-variant split, so every one of those fields failed at runtime.
+func (r *Repository) countPoemsWhere(query string, args ...any) (int, error) {
+	var count int64
+	err := r.db.Table(r.poemsTable()).Where(query, args...).Count(&count).Error
+	return int(count), err
+}
+
 // GetStatistics returns overall statistics
 func (r *Repository) GetStatistics() (*Statistics, error) {
 	stats := &Statistics{}
