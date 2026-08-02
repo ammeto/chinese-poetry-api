@@ -29,15 +29,12 @@ func (h *PoemHandler) ListPoems(c *gin.Context) {
 	repo := h.repo.WithLang(lang)
 	pagination := ParsePagination(c)
 
-	poems, err := repo.ListPoems(pagination.PageSize, pagination.Offset())
+	// Shares ListPoemsWithFilter with the GraphQL poems resolver so both APIs
+	// paginate in the same order; no filters are exposed on this endpoint yet.
+	poems, total, err := repo.ListPoemsWithFilter(pagination.PageSize, pagination.Offset(), nil, nil, nil)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to retrieve poems")
 		return
-	}
-
-	total, err := repo.CountPoems()
-	if err != nil {
-		total = 0
 	}
 
 	data := make([]map[string]any, len(poems))

@@ -82,7 +82,7 @@ func BenchmarkListPoems(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ResetTimer()
 			for b.Loop() {
-				_, _ = repo.ListPoems(tc.pageSize, (tc.page-1)*tc.pageSize)
+				_, _, _ = repo.ListPoemsWithFilter(tc.pageSize, (tc.page-1)*tc.pageSize, nil, nil, nil)
 			}
 		})
 	}

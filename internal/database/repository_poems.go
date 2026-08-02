@@ -150,22 +150,11 @@ func (r *Repository) loadPoemRelations(poems []Poem) {
 	}
 }
 
-// ListPoems returns a paginated list of poems with relations loaded
-func (r *Repository) ListPoems(limit, offset int) ([]Poem, error) {
-	var poems []Poem
-	err := r.db.Table(r.poemsTable()).
-		Limit(limit).Offset(offset).
-		Find(&poems).Error
-	if err != nil {
-		return nil, err
-	}
-
-	// Load relations for each poem
-	r.loadPoemRelations(poems)
-	return poems, nil
-}
-
-// ListPoemsWithFilter returns a paginated list of poems with optional filters
+// ListPoemsWithFilter returns a paginated list of poems with optional filters.
+// Results are ordered by id ASC: poem ids are assigned sequentially at import
+// time (see processor.Pipeline), so ascending id follows the order of the source
+// corpus rather than any notion of recency. Every paginated listing in this
+// repository uses the same order so REST and GraphQL agree on what "page N" is.
 func (r *Repository) ListPoemsWithFilter(limit, offset int, dynastyID, authorID, typeID *int64) ([]Poem, int, error) {
 	query := r.db.Table(r.poemsTable())
 
@@ -190,7 +179,7 @@ func (r *Repository) ListPoemsWithFilter(limit, offset int, dynastyID, authorID,
 	var poems []Poem
 	err := query.
 		Limit(limit).Offset(offset).
-		Order("id DESC").
+		Order("id ASC").
 		Find(&poems).Error
 	if err != nil {
 		return nil, 0, err
@@ -300,7 +289,7 @@ func (r *Repository) ListAuthorPoems(authorID int64, limit, offset int) ([]Poem,
 	err := r.db.Table(r.poemsTable()).
 		Where("author_id = ?", authorID).
 		Limit(limit).Offset(offset).
-		Order("id DESC").
+		Order("id ASC").
 		Find(&poems).Error
 	if err != nil {
 		return nil, 0, err

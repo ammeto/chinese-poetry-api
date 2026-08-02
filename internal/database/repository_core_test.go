@@ -85,22 +85,33 @@ func TestListPoems(t *testing.T) {
 	}
 
 	t.Run("list with pagination", func(t *testing.T) {
-		poems, err := repo.ListPoems(3, 0)
+		poems, _, err := repo.ListPoemsWithFilter(3, 0, nil, nil, nil)
 		require.NoError(t, err)
 		assert.Len(t, poems, 3)
+		assert.Equal(t, []int64{10, 11, 12}, poemIDs(poems), "first page must be the lowest ids, ascending")
 	})
 
 	t.Run("list with offset", func(t *testing.T) {
-		poems, err := repo.ListPoems(3, 2)
+		poems, _, err := repo.ListPoemsWithFilter(3, 2, nil, nil, nil)
 		require.NoError(t, err)
 		assert.Len(t, poems, 3)
+		assert.Equal(t, []int64{12, 13, 14}, poemIDs(poems), "offset must continue in ascending id order")
 	})
 
 	t.Run("list all", func(t *testing.T) {
-		poems, err := repo.ListPoems(10, 0)
+		poems, total, err := repo.ListPoemsWithFilter(10, 0, nil, nil, nil)
 		require.NoError(t, err)
 		assert.Len(t, poems, 5)
+		assert.Equal(t, 5, total)
 	})
+}
+
+func poemIDs(poems []Poem) []int64 {
+	ids := make([]int64, len(poems))
+	for i := range poems {
+		ids[i] = poems[i].ID
+	}
+	return ids
 }
 
 func TestListPoemsWithFilter(t *testing.T) {

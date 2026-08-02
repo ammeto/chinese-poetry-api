@@ -240,6 +240,72 @@ func TestRandomConsistency(t *testing.T) {
 	}
 }
 
+// TestListOrderConsistency verifies the REST and GraphQL poem listings walk the
+// corpus in the same order. They used to disagree: REST listed with no ORDER BY
+// (effectively id ASC) while GraphQL ordered by id DESC, so paging both APIs
+// yielded disjoint sets. Comparing ids page by page is what catches that;
+// comparing counts alone does not.
+func TestListOrderConsistency(t *testing.T) {
+	restRouter, graphqlClient, repo := setupTestEnv(t)
+	createTestData(t, repo)
+
+	restIDs := func(page int) []int64 {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/poems?page="+strconv.Itoa(page)+"&page_size=1", nil)
+		resp := httptest.NewRecorder()
+		restRouter.ServeHTTP(resp, req)
+
+		var result struct {
+			Data []struct {
+				ID int64 `json:"id"`
+			} `json:"data"`
+			Pagination struct {
+				Total int `json:"total"`
+			} `json:"pagination"`
+		}
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &result))
+		assert.Equal(t, 2, result.Pagination.Total, "REST must report the full corpus size, not the page size")
+
+		ids := make([]int64, len(result.Data))
+		for i, d := range result.Data {
+			ids[i] = d.ID
+		}
+		return ids
+	}
+
+	graphqlIDs := func(page int) []int64 {
+		var result struct {
+			Poems struct {
+				Edges []struct {
+					Node struct {
+						ID int64
+					}
+				}
+				TotalCount int
+			}
+		}
+		query := `query { poems(page: ` + strconv.Itoa(page) + `, pageSize: 1) {
+			edges { node { id } }
+			totalCount
+		} }`
+		require.NoError(t, graphqlClient.Post(query, &result))
+		assert.Equal(t, 2, result.Poems.TotalCount)
+
+		ids := make([]int64, len(result.Poems.Edges))
+		for i, e := range result.Poems.Edges {
+			ids[i] = e.Node.ID
+		}
+		return ids
+	}
+
+	// Ascending id order follows the order poems were imported into the corpus.
+	assert.Equal(t, []int64{1001}, restIDs(1))
+	assert.Equal(t, []int64{1002}, restIDs(2))
+
+	for page := 1; page <= 2; page++ {
+		assert.Equal(t, restIDs(page), graphqlIDs(page), "page %d must be the same poems in both APIs", page)
+	}
+}
+
 // TestPaginationConsistency verifies REST and GraphQL pagination work the same
 func TestPaginationConsistency(t *testing.T) {
 	restRouter, graphqlClient, repo := setupTestEnv(t)

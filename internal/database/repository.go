@@ -18,7 +18,6 @@ type RepositoryInterface interface {
 	CountPoems() (int, error)
 	CountAuthors() (int, error)
 	GetStatistics() (*Statistics, error)
-	ListPoems(limit, offset int) ([]Poem, error)
 	ListPoemsWithFilter(limit, offset int, dynastyID, authorID, typeID *int64) ([]Poem, int, error)
 	ListAuthorPoems(authorID int64, limit, offset int) ([]Poem, int, error)
 	ListAuthorsWithFilter(limit, offset int, dynastyID *int64) ([]AuthorWithStats, int, error)
