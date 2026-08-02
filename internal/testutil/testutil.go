@@ -1,4 +1,4 @@
-// Package testutil provides shared utilities for testing.
+// Package testutil 提供测试用的公共辅助函数。
 package testutil
 
 import (
@@ -13,8 +13,8 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// SetupTestDB creates an in-memory SQLite database with migrations applied.
-// Returns the DB wrapper and Repository. Automatically cleans up on test completion.
+// SetupTestDB 创建一个已完成迁移的内存 SQLite 数据库，
+// 返回 DB 封装与 Repository，并在测试结束时自动清理。
 func SetupTestDB(t *testing.T) (*database.DB, *database.Repository) {
 	t.Helper()
 
@@ -35,7 +35,7 @@ func SetupTestDB(t *testing.T) (*database.DB, *database.Repository) {
 	return db, repo
 }
 
-// SetupTestDBWithLang creates an in-memory database with a specific language variant.
+// SetupTestDBWithLang 创建指定语言变体的内存数据库。
 func SetupTestDBWithLang(t *testing.T, lang database.Lang) (*database.DB, *database.Repository) {
 	t.Helper()
 
@@ -56,14 +56,13 @@ func SetupTestDBWithLang(t *testing.T, lang database.Lang) (*database.DB, *datab
 	return db, repo
 }
 
-// SetupTestGin creates a test Gin engine with test mode enabled.
+// SetupTestGin 创建处于测试模式的 Gin 引擎。
 func SetupTestGin() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	return gin.New()
 }
 
-// GormDB returns the underlying GORM database from a database.DB wrapper.
-// This is useful for direct database manipulation in tests.
+// GormDB 取出 database.DB 封装内部的 GORM 实例，便于测试中直接操作数据库。
 func GormDB(db *database.DB) *gorm.DB {
 	return db.DB
 }

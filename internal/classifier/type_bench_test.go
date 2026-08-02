@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// BenchmarkClassifyPoetryType benchmarks the ClassifyPoetryType function
+// BenchmarkClassifyPoetryType 测量 ClassifyPoetryType 的性能。
 func BenchmarkClassifyPoetryType(b *testing.B) {
 	testCases := []struct {
 		name       string
@@ -53,7 +53,7 @@ func BenchmarkClassifyPoetryType(b *testing.B) {
 	}
 }
 
-// BenchmarkRemovePunctuation benchmarks the removePunctuation function
+// BenchmarkRemovePunctuation 测量 removePunctuation 的性能。
 func BenchmarkRemovePunctuation(b *testing.B) {
 	testCases := []struct {
 		name  string
@@ -76,7 +76,7 @@ func BenchmarkRemovePunctuation(b *testing.B) {
 	}
 }
 
-// BenchmarkSplitBySentence benchmarks the splitBySentence function
+// BenchmarkSplitBySentence 测量 splitBySentence 的性能。
 func BenchmarkSplitBySentence(b *testing.B) {
 	testCases := []struct {
 		name  string
@@ -98,7 +98,7 @@ func BenchmarkSplitBySentence(b *testing.B) {
 	}
 }
 
-// BenchmarkExpandParagraphs benchmarks the expandParagraphs function
+// BenchmarkExpandParagraphs 测量 expandParagraphs 的性能。
 func BenchmarkExpandParagraphs(b *testing.B) {
 	testCases := []struct {
 		name       string

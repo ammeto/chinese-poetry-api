@@ -35,8 +35,7 @@ func TestListPoetryTypes(t *testing.T) {
 	router, repo := setupPoetryTypeTestRouter(t)
 	handler := NewPoetryTypeHandler(repo)
 
-	// Create test data - need to create types directly
-	// Note: We can't access db directly, so we'll just test the endpoint
+	// 体裁需要直接写库，但这里拿不到 db，因此只验证接口本身
 
 	router.GET("/types", handler.ListPoetryTypes)
 
@@ -51,7 +50,7 @@ func TestListPoetryTypes(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	// Response should have data field
+	// 响应中应包含 data 字段
 	assert.Contains(t, response, "data")
 }
 

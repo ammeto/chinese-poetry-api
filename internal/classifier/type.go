@@ -5,14 +5,14 @@ import (
 	"unicode/utf8"
 )
 
-// Poetry type constants
+// 诗词体裁相关常量。
 const (
-	// Categories
+	// 大类
 	CategoryPoetry = "唐诗"
 	CategoryCi     = "宋词"
 	CategoryOther  = "其他"
 
-	// Specific types
+	// 具体体裁
 	TypeWuyanJueju = "五言绝句"
 	TypeQiyanJueju = "七言绝句"
 	TypeWuyanLvshi = "五言律诗"
@@ -20,14 +20,14 @@ const (
 	TypeCi         = "宋词"
 	TypeOther      = "其他"
 
-	// Structure constraints
+	// 格律结构约束
 	JuejuLines = 4
 	LvshiLines = 8
 	WuyanChars = 5
 	QiyanChars = 7
 )
 
-// PoetryTypeInfo contains information about a classified poetry type
+// PoetryTypeInfo 描述一次体裁判定的结果。
 type PoetryTypeInfo struct {
 	TypeName     string
 	Category     string
@@ -35,24 +35,24 @@ type PoetryTypeInfo struct {
 	CharsPerLine *int
 }
 
-// ClassifyPoetryType determines the type of poetry based on its structure
+// ClassifyPoetryType 仅依据结构判定诗词体裁。
 func ClassifyPoetryType(paragraphs []string, rhythmic string) PoetryTypeInfo {
 	return ClassifyPoetryTypeWithDataset(paragraphs, rhythmic, "", "")
 }
 
-// ClassifyPoetryTypeWithDataset determines the type of poetry based on dataset source and structure
-// Priority order:
-// 1. Dataset-based direct mapping (for shijing, chuci, lunyu, mengzi, yuanqu)
-// 2. Rhythmic field check (for songci)
-// 2.5. Yuefu poem title check
-// 3. Structure analysis (for tangshi)
+// ClassifyPoetryTypeWithDataset 结合数据集来源与文本结构判定诗词体裁。
+// 判定优先级：
+//  1. 按数据集直接映射（诗经、楚辞、论语、孟子、元曲等）
+//  2. 有词牌名（rhythmic）则判为词（宋词等）
+//  3. 按标题识别乐府诗
+//  4. 按结构分析判定（唐诗）
 func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, datasetKey string, title string) PoetryTypeInfo {
-	// Priority 1: Check dataset key for direct type mapping
+	// 优先级 1：按数据集 key 直接映射
 	if typeInfo, ok := getTypeFromDataset(datasetKey); ok {
 		return typeInfo
 	}
 
-	// Priority 2: If it has a rhythmic field, it's ci (词)
+	// 优先级 2：带词牌名的判为词
 	if rhythmic != "" {
 		return PoetryTypeInfo{
 			TypeName: TypeCi,
@@ -60,7 +60,7 @@ func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, dataset
 		}
 	}
 
-	// Priority 2.5: Check if it's a Yuefu poem by title
+	// 优先级 3：按标题识别乐府诗
 	if title != "" && isYuefuPoem(title) {
 		return PoetryTypeInfo{
 			TypeName: "乐府诗",
@@ -68,7 +68,7 @@ func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, dataset
 		}
 	}
 
-	// Priority 3: Structure-based classification for Tang poetry
+	// 优先级 4：按结构判定唐诗类别
 	if len(paragraphs) == 0 {
 		return PoetryTypeInfo{
 			TypeName: TypeOther,
@@ -76,10 +76,10 @@ func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, dataset
 		}
 	}
 
-	// Split merged lines (e.g., "江南有美人，别后长相忆。" → ["江南有美人", "别后长相忆"])
+	// 拆分被合并的诗句，如 "江南有美人，别后长相忆。" → ["江南有美人", "别后长相忆"]
 	expandedLines := expandParagraphs(paragraphs)
 
-	// Check if expansion resulted in empty lines
+	// 拆分后若无有效诗句则归入其他
 	if len(expandedLines) == 0 {
 		return PoetryTypeInfo{
 			TypeName: TypeOther,
@@ -87,19 +87,18 @@ func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, dataset
 		}
 	}
 
-	// Count lines and characters per line
+	// 统计句数与每句字数
 	lineCount := len(expandedLines)
 	charCounts := make([]int, lineCount)
 
 	for i, line := range expandedLines {
-		// Remove punctuation and count characters
+		// 去掉标点后再计字数
 		cleaned := removePunctuation(line)
 		charCounts[i] = utf8.RuneCountInString(cleaned)
 	}
 
-	// Check if all lines have the same character count
+	// 各句字数不一致则视为不规则结构
 	if !isUniform(charCounts) {
-		// Irregular structure
 		return PoetryTypeInfo{
 			TypeName: TypeOther,
 			Category: CategoryOther,
@@ -108,7 +107,7 @@ func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, dataset
 
 	charsPerLine := charCounts[0]
 
-	// Classify based on line count and characters per line
+	// 依据句数与每句字数判定具体体裁
 	typeName, category := classifyByStructure(lineCount, charsPerLine)
 
 	return PoetryTypeInfo{
@@ -119,10 +118,10 @@ func ClassifyPoetryTypeWithDataset(paragraphs []string, rhythmic string, dataset
 	}
 }
 
-// getTypeFromDataset returns poetry type info based on dataset key
-// Returns (typeInfo, true) if dataset has a direct mapping, (empty, false) otherwise
+// getTypeFromDataset 按数据集 key 返回对应的体裁信息。
+// 存在直接映射时返回 (typeInfo, true)，否则返回 (零值, false)。
 func getTypeFromDataset(datasetKey string) (PoetryTypeInfo, bool) {
-	// Map dataset keys to their corresponding poetry types
+	// 数据集 key 到体裁的映射表
 	datasetTypeMap := map[string]PoetryTypeInfo{
 		"shijing": {
 			TypeName: "诗经",
@@ -169,7 +168,7 @@ func getTypeFromDataset(datasetKey string) (PoetryTypeInfo, bool) {
 	return PoetryTypeInfo{}, false
 }
 
-// classifyByStructure classifies poetry based on line count and characters per line
+// classifyByStructure 依据句数与每句字数判定绝句、律诗等体裁。
 func classifyByStructure(lines, chars int) (typeName, category string) {
 	switch {
 	case lines == JuejuLines && chars == WuyanChars:
@@ -185,7 +184,7 @@ func classifyByStructure(lines, chars int) (typeName, category string) {
 	}
 }
 
-// isUniform checks if all integers in a slice are equal
+// isUniform 判断切片中的整数是否全部相等。
 func isUniform(nums []int) bool {
 	if len(nums) == 0 {
 		return true
@@ -199,13 +198,11 @@ func isUniform(nums []int) bool {
 	return true
 }
 
-// expandParagraphs splits paragraphs by sentence-ending punctuation
+// expandParagraphs 按句末标点把段落拆分为单句。
 func expandParagraphs(paragraphs []string) []string {
 	var result []string
 
 	for _, para := range paragraphs {
-		// Split by common sentence-ending punctuation
-		// 。！？；are common Chinese sentence enders
 		lines := splitBySentence(para)
 		result = append(result, lines...)
 	}
@@ -213,15 +210,15 @@ func expandParagraphs(paragraphs []string) []string {
 	return result
 }
 
-// splitBySentence splits text by sentence-ending punctuation
+// splitBySentence 按句末标点（。！？；，）切分文本，并丢弃空白片段。
 func splitBySentence(text string) []string {
-	// Replace sentence-ending punctuation with a delimiter
+	// 先把句末标点统一替换成换行符
 	delimiters := []string{"。", "！", "？", "；", "，"}
 	for _, delim := range delimiters {
 		text = strings.ReplaceAll(text, delim, "\n")
 	}
 
-	// Split by newline and filter empty strings
+	// 再按换行切分并过滤空串
 	lines := strings.Split(text, "\n")
 	var result []string
 	for _, line := range lines {
@@ -234,15 +231,15 @@ func splitBySentence(text string) []string {
 	return result
 }
 
-// removePunctuation removes all punctuation from text
+// removePunctuation 去除文本中的所有标点。
 func removePunctuation(text string) string {
-	// Common Chinese and English punctuation
+	// 常见中英文标点
 	punctuation := `，。！？；：""''（）《》【】、·—…,.!?;:'"()[]{}/-`
 
-	// Use strings.Map for efficient single-pass filtering
+	// 用 strings.Map 单趟过滤，避免多次分配
 	result := strings.Map(func(r rune) rune {
 		if strings.ContainsRune(punctuation, r) {
-			return -1 // Remove this character
+			return -1 // 丢弃该字符
 		}
 		return r
 	}, text)
@@ -250,19 +247,17 @@ func removePunctuation(text string) string {
 	return strings.TrimSpace(result)
 }
 
-// isYuefuPoem checks if a poem is a Yuefu poem based on its title
-// Note: We maintain only simplified Chinese patterns and convert the input title
-// to simplified Chinese before matching. This avoids the need to maintain both
-// simplified and traditional variants, preventing inconsistencies.
+// isYuefuPoem 依据标题判断是否为乐府诗。
+// 注意：这里只维护一份简体的匹配词表，匹配前先把传入标题转为简体，
+// 从而免去同时维护简繁两套词表，也避免两者不一致。
 func isYuefuPoem(title string) bool {
-	// Convert title to simplified Chinese for consistent matching
-	// If conversion fails, fall back to original title
+	// 统一转简体后再匹配，转换失败则退回原标题
 	simplifiedTitle, err := ToSimplified(title)
 	if err != nil {
 		simplifiedTitle = title
 	}
 
-	// Common Yuefu poem titles (simplified Chinese only)
+	// 常见乐府诗题（仅简体）
 	yuefuTitles := []string{
 		// 边塞乐府
 		"凉州词", "出塞", "从军行", "塞下曲", "塞上曲",
@@ -336,15 +331,14 @@ func isYuefuPoem(title string) bool {
 		"有所思", "上山采蘼芜", "江南",
 	}
 
-	// Check title matches using simplified title
+	// 先按标题词表匹配
 	for _, yuefuTitle := range yuefuTitles {
 		if strings.Contains(simplifiedTitle, yuefuTitle) {
 			return true
 		}
 	}
 
-	// Check for common Yuefu patterns (suffixes)
-	// 曲辞、歌辞、歌行、乐府、新乐府 are typical Yuefu markers
+	// 再按常见后缀匹配：曲辞、歌辞、歌行、乐府、新乐府都是典型的乐府标志
 	yuefuPatterns := []string{
 		"曲辞", "歌辞", "歌行", "乐府", "新乐府",
 	}

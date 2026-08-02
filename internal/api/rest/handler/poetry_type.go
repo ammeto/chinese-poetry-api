@@ -8,18 +8,18 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// PoetryTypeHandler handles poetry type-related requests
+// PoetryTypeHandler 处理体裁相关的请求。
 type PoetryTypeHandler struct {
 	repo *database.Repository
 }
 
-// NewPoetryTypeHandler creates a new poetry type handler
+// NewPoetryTypeHandler 创建体裁 handler。
 func NewPoetryTypeHandler(repo *database.Repository) *PoetryTypeHandler {
 	return &PoetryTypeHandler{repo: repo}
 }
 
-// ListPoetryTypes returns a list of poetry types
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// ListPoetryTypes 返回体裁列表。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
 func (h *PoetryTypeHandler) ListPoetryTypes(c *gin.Context) {
 	if !checkQueryParams(c, queryLang) {
 		return
@@ -45,8 +45,8 @@ func (h *PoetryTypeHandler) ListPoetryTypes(c *gin.Context) {
 	respondOK(c, data)
 }
 
-// GetPoetryType returns a specific poetry type by ID
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// GetPoetryType 按 ID 返回指定体裁。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
 func (h *PoetryTypeHandler) GetPoetryType(c *gin.Context) {
 	if !checkQueryParams(c, queryLang) {
 		return

@@ -17,17 +17,17 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// setupPoemTestRouter creates a test router with database
+// setupPoemTestRouter 创建带数据库的测试路由。
 func setupPoemTestRouter(t *testing.T) (*gin.Engine, *database.Repository) {
 	gin.SetMode(gin.TestMode)
 
-	// Create in-memory database
+	// 创建内存数据库
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
 	db := &database.DB{DB: gormDB}
 
-	// Use Migrate() to create language-specific tables
+	// 用 Migrate 建出各语言变体的表
 	err = db.Migrate()
 	require.NoError(t, err)
 
@@ -37,20 +37,20 @@ func setupPoemTestRouter(t *testing.T) (*gin.Engine, *database.Repository) {
 	return router, repo
 }
 
-// createTestPoem creates a test poem in the database
+// createTestPoem 向数据库写入一首测试诗词。
 func createTestPoem(t *testing.T, repo *database.Repository, id int64, title, content string) *database.Poem {
-	// Create dynasty and author first
+	// 先写入朝代与作者
 	dynastyID, err := repo.GetOrCreateDynasty("唐")
 	require.NoError(t, err)
 
 	authorID, err := repo.GetOrCreateAuthor("李白", dynastyID)
 	require.NoError(t, err)
 
-	// Create poem
+	// 写入诗词
 	poem := &database.Poem{
 		ID:        id,
 		Title:     title,
-		Content:   datatypes.JSON([]byte(`["床前明月光","疑是地上霜","举头望明月","低头思故乡"]`)),
+		Content:   datatypes.JSON([]byte(content)),
 		AuthorID:  &authorID,
 		DynastyID: &dynastyID,
 	}
@@ -64,7 +64,7 @@ func TestListPoems(t *testing.T) {
 	router, repo := setupPoemTestRouter(t)
 	handler := NewPoemHandler(repo)
 
-	// Create test poems
+	// 写入测试诗词
 	createTestPoem(t, repo, 1, "静夜思", "test content")
 	createTestPoem(t, repo, 2, "春晓", "test content 2")
 
@@ -89,7 +89,7 @@ func TestListPoems(t *testing.T) {
 				assert.Equal(t, float64(20), pagination["page_size"])
 				assert.Equal(t, float64(2), pagination["total"])
 
-				// Check nested structure of first poem
+				// 校验首条结果的嵌套结构
 				poem := data[0].(map[string]any)
 				assert.NotEmpty(t, poem["title"])
 				assert.NotEmpty(t, poem["content"])
@@ -109,7 +109,7 @@ func TestListPoems(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			checkResponse: func(t *testing.T, resp map[string]any) {
 				data := resp["data"].([]any)
-				assert.Len(t, data, 1) // Should only return 1
+				assert.Len(t, data, 1) // 应只返回一条
 
 				pagination := resp["pagination"].(map[string]any)
 				assert.Equal(t, float64(1), pagination["page"])
@@ -137,10 +137,9 @@ func TestListPoems(t *testing.T) {
 	}
 }
 
-// TestListPoemsFilters covers the filters on /poems, which previously accepted
-// every spelling and silently ignored all of them: dynasty_id=6, dynasty=唐 and
-// dynastyId=6 all returned 200 over the unfiltered corpus, so a client had no
-// way to notice it had got the parameter wrong.
+// TestListPoemsFilters 覆盖 /poems 上的各项过滤条件——它们此前来者不拒又一概忽略：
+// dynasty_id=6、dynasty=唐、dynastyId=6 都会在未过滤的全量语料上返回 200，
+// 客户端根本无从察觉自己把参数写错了。
 func TestListPoemsFilters(t *testing.T) {
 	router, repo := setupPoemTestRouter(t)
 	handler := NewPoemHandler(repo)
@@ -168,8 +167,8 @@ func TestListPoemsFilters(t *testing.T) {
 
 	router.GET("/poems", handler.ListPoems)
 
-	// titles runs a request and returns the titles it produced, so each case
-	// asserts on which poems came back rather than only on the status code.
+	// titles 发起一次请求并返回其命中的标题，
+	// 使每个用例都能断言「返回了哪些诗」，而不只是断言状态码。
 	titles := func(t *testing.T, query string, wantStatus int) []string {
 		req := httptest.NewRequest(http.MethodGet, "/poems"+query, nil)
 		w := httptest.NewRecorder()
@@ -194,7 +193,7 @@ func TestListPoemsFilters(t *testing.T) {
 		for i, d := range resp.Data {
 			got[i] = d.Title
 		}
-		// The reported total must describe the filtered set, not the corpus.
+		// 返回的总数应是过滤后的数量，而非全量语料的数量
 		assert.Equal(t, len(got), resp.Pagination.Total)
 		return got
 	}
@@ -214,14 +213,13 @@ func TestListPoemsFilters(t *testing.T) {
 	})
 
 	t.Run("a repeated type is not an error", func(t *testing.T) {
-		// The same name twice collapses to one row in the IN clause used to
-		// resolve names to ids, which used to be misread as "type not found".
+		// 同一名称传两次，在把名称解析为 ID 的 IN 子句中会合并成一行，
 		assert.Equal(t, []string{"静夜思"}, titles(t, "?type=五言绝句&type=五言绝句", http.StatusOK))
 		assert.Equal(t, []string{"静夜思"}, titles(t, "?type_id=11&type_id=11", http.StatusOK))
 	})
 
 	t.Run("misspelled and malformed filters are rejected", func(t *testing.T) {
-		// The GraphQL spelling leaking into REST is the motivating case.
+		// 典型场景是把 GraphQL 的参数拼写误用到了 REST 上
 		titles(t, "?dynastyId=6", http.StatusBadRequest)
 		titles(t, "?dynasty_ids=6", http.StatusBadRequest)
 		titles(t, "?dynasty_id=abc", http.StatusBadRequest)
@@ -245,7 +243,7 @@ func TestSearchPoems(t *testing.T) {
 	router, repo := setupPoemTestRouter(t)
 	handler := NewPoemHandler(repo)
 
-	// Create test poems
+	// 写入测试诗词
 	createTestPoem(t, repo, 1, "静夜思", "test content")
 
 	router.GET("/poems/search", handler.SearchPoems)
@@ -305,8 +303,8 @@ func TestSearchPoems(t *testing.T) {
 			},
 		},
 		{
-			// Unknown search types fell through to "all", so a typo searched
-			// everything and looked like a working narrow search.
+			// 未知的搜索类型曾会静默落到 "all"，于是一个拼写错误会搜索全部字段，
+			// 看上去却像是一次正常的定向搜索。
 			name:           "unknown search type is rejected",
 			query:          "?q=李白&type=titel",
 			expectedStatus: http.StatusBadRequest,
@@ -407,7 +405,7 @@ func TestRandomPoem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create fresh router for each test to avoid data pollution
+			// 每个用例都新建路由，避免数据相互污染
 			router, repo := setupPoemTestRouter(t)
 			handler := NewPoemHandler(repo)
 			router.GET("/random", handler.RandomPoem)

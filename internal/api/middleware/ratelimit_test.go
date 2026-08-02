@@ -31,13 +31,13 @@ func TestRateLimiterAllowsThenBlocks(t *testing.T) {
 		codes[i] = w.Code
 	}
 
-	// burst of 2 is consumed, the third request in the same instant is refused
+	// 前两次请求耗尽 burst，同一瞬间的第三次请求应被拒绝
 	assert.Equal(t, []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests}, codes)
 }
 
-// TestRateLimiterEvictsIdleClients covers the limiter map, which previously had
-// no eviction at all: it kept one entry per client IP ever seen, and ClientIP
-// trusts forwarding headers, so the key set was effectively caller-controlled.
+// TestRateLimiterEvictsIdleClients 覆盖限流器 map——它此前完全没有回收机制：
+// 每个出现过的客户端 IP 都会占一个条目，而 ClientIP 会信任转发头，
+// 等于让调用方控制 key 的取值范围。
 func TestRateLimiterEvictsIdleClients(t *testing.T) {
 	rl := NewRateLimiter(10, 10)
 	defer rl.Stop()
@@ -47,11 +47,11 @@ func TestRateLimiterEvictsIdleClients(t *testing.T) {
 	}
 	require.Len(t, rl.limiters, 3)
 
-	// Not yet idle for long enough: nothing is dropped.
+	// 闲置时长还不够，不应回收任何条目
 	rl.sweep(time.Now().Add(idleTTL / 2))
 	assert.Len(t, rl.limiters, 3)
 
-	// One client stays active while the clock advances past the TTL.
+	// 时钟推进越过 TTL 期间，保持其中一个客户端处于活跃状态
 	future := time.Now().Add(idleTTL + time.Minute)
 	rl.limiters["192.0.2.2"].lastSeen = future
 
@@ -79,7 +79,7 @@ func TestRateLimiterConcurrentAccess(t *testing.T) {
 	rl := NewRateLimiter(1000, 1000)
 	defer rl.Stop()
 
-	// Run under -race: getLimiter and sweep both mutate the shared map.
+	// 需在 -race 下运行：getLimiter 与 sweep 都会修改同一个 map
 	var wg sync.WaitGroup
 	for i := range 50 {
 		wg.Go(func() {

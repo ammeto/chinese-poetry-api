@@ -6,8 +6,7 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// ParseOptionalInt64 parses a string pointer to int64 pointer
-// Returns nil if the string is nil or empty
+// ParseOptionalInt64 把字符串指针解析为 *int64，为 nil 或空串时返回 nil。
 func ParseOptionalInt64(s *string) (*int64, error) {
 	if s == nil || *s == "" {
 		return nil, nil
@@ -19,8 +18,7 @@ func ParseOptionalInt64(s *string) (*int64, error) {
 	return &id, nil
 }
 
-// ParseFilterIDs parses dynasty, author, and type IDs from string pointers
-// Returns three int64 pointers and an error if parsing fails
+// ParseFilterIDs 依次解析朝代、作者、体裁三个 ID，任一解析失败即返回错误。
 func ParseFilterIDs(dynastyID, authorID, typeID *string) (*int64, *int64, *int64, error) {
 	dID, err := ParseOptionalInt64(dynastyID)
 	if err != nil {
@@ -37,9 +35,8 @@ func ParseFilterIDs(dynastyID, authorID, typeID *string) (*int64, *int64, *int64
 	return dID, aID, tID, nil
 }
 
-// ParseLangString converts string to Lang enum
-// Supports "zh-Hans" (simplified) and "zh-Hant" (traditional)
-// Defaults to simplified Chinese
+// ParseLangString 把字符串转换为 Lang，支持 "zh-Hans"（简体）与 "zh-Hant"（繁体），
+// 其余取值一律按简体处理。
 func ParseLangString(langStr string) database.Lang {
 	if langStr == "zh-Hant" {
 		return database.LangHant
@@ -47,8 +44,7 @@ func ParseLangString(langStr string) database.Lang {
 	return database.LangHans
 }
 
-// ParseLangPointer converts *Lang to Lang with default
-// Returns simplified Chinese if pointer is nil
+// ParseLangPointer 把 *Lang 转换为 Lang，指针为 nil 时返回简体。
 func ParseLangPointer(lang *database.Lang) database.Lang {
 	if lang != nil {
 		return *lang
@@ -56,14 +52,14 @@ func ParseLangPointer(lang *database.Lang) database.Lang {
 	return database.LangHans
 }
 
-// Pagination represents pagination parameters
+// Pagination 保存分页参数。
 type Pagination struct {
 	Page     int
 	PageSize int
 }
 
-// NewPagination creates a new Pagination with validation
-// Ensures page >= 1, pageSize between 1-100, defaults to page=1, pageSize=20
+// NewPagination 创建并校正分页参数：page 不小于 1，pageSize 限定在 1-100，
+// 非法取值分别回落到 page=1、pageSize=20。
 func NewPagination(page, pageSize int) *Pagination {
 	if page < 1 {
 		page = 1
@@ -80,7 +76,7 @@ func NewPagination(page, pageSize int) *Pagination {
 	}
 }
 
-// Offset calculates the database offset for the current page
+// Offset 换算出当前页对应的查询偏移量。
 func (p *Pagination) Offset() int {
 	return (p.Page - 1) * p.PageSize
 }

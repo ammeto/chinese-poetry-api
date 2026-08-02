@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 )
 
-// DataConfig represents the structure of datas.json
+// DataConfig 对应 datas.json 的结构。
 type DataConfig struct {
 	CPPath   string                 `json:"cp_path"`
 	Datasets map[string]DatasetInfo `json:"datasets"`
 }
 
-// DatasetInfo contains information about a dataset
+// DatasetInfo 描述单个数据集的配置。
 type DatasetInfo struct {
 	Name     string   `json:"name"`
 	ID       int      `json:"id"`
@@ -23,26 +23,26 @@ type DatasetInfo struct {
 	Comments string   `json:"comments,omitempty"`
 }
 
-// PoemData represents a poem from JSON
+// PoemData 是 JSON 文件中的一首诗词。
 type PoemData struct {
 	ID         string   `json:"id"`
 	Title      string   `json:"title"`
-	Chapter    string   `json:"chapter,omitempty"` // For 论语, 四书五经
+	Chapter    string   `json:"chapter,omitempty"` // 用于论语、四书五经
 	Author     string   `json:"author"`
 	Paragraphs []string `json:"paragraphs"`
-	Rhythmic   string   `json:"rhythmic,omitempty"` // For ci (词)
-	Content    string   `json:"content,omitempty"`  // Alternative field
-	Para       []string `json:"para,omitempty"`     // Alternative field
+	Rhythmic   string   `json:"rhythmic,omitempty"` // 词牌名，用于词
+	Content    string   `json:"content,omitempty"`  // 正文的备用字段
+	Para       []string `json:"para,omitempty"`     // 正文的备用字段
 }
 
-// JSONLoader loads poetry data from JSON files
+// JSONLoader 从 JSON 文件中加载诗词数据。
 type JSONLoader struct {
 	config      *DataConfig
 	basePath    string
 	idToDynasty map[int]string
 }
 
-// NewJSONLoader creates a new JSON loader
+// NewJSONLoader 读取配置文件并创建加载器。
 func NewJSONLoader(configPath string) (*JSONLoader, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -54,19 +54,19 @@ func NewJSONLoader(configPath string) (*JSONLoader, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	// Determine base path
+	// 确定数据文件的根目录
 	configDir := filepath.Dir(configPath)
 	var basePath string
 
-	// If cp_path is specified and not current directory, join it
+	// cp_path 指定了非当前目录时，与配置文件所在目录拼接
 	if config.CPPath != "" && config.CPPath != "./" && config.CPPath != "." {
 		basePath = filepath.Join(configDir, config.CPPath)
 	} else {
-		// cp_path is "./" or ".", so base path is parent of loader directory
+		// cp_path 为 "./" 或 "." 时，根目录取 loader 目录的上一级
 		basePath = filepath.Dir(configDir)
 	}
 
-	// Build ID to dynasty mapping
+	// 建立数据集 ID 到朝代的映射
 	idToDynasty := make(map[int]string)
 	for key, dataset := range config.Datasets {
 		idToDynasty[dataset.ID] = inferDynasty(key, dataset.Name)
@@ -79,7 +79,7 @@ func NewJSONLoader(configPath string) (*JSONLoader, error) {
 	}, nil
 }
 
-// LoadAll loads all poetry data from all datasets
+// LoadAll 加载全部数据集中的诗词数据。
 func (l *JSONLoader) LoadAll() ([]PoemWithMeta, error) {
 	var allPoems []PoemWithMeta
 
@@ -94,7 +94,7 @@ func (l *JSONLoader) LoadAll() ([]PoemWithMeta, error) {
 	return allPoems, nil
 }
 
-// PoemWithMeta includes metadata about the poem's source
+// PoemWithMeta 是诗词数据加上其来源信息。
 type PoemWithMeta struct {
 	PoemData
 	Dynasty     string
@@ -114,7 +114,7 @@ func (l *JSONLoader) loadDataset(key string, dataset DatasetInfo) ([]PoemWithMet
 	var poems []PoemWithMeta
 
 	if info.IsDir() {
-		// Load from directory
+		// 目录：逐个加载其中的 JSON 文件
 		entries, err := os.ReadDir(fullPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read directory %s: %w", fullPath, err)
@@ -125,7 +125,7 @@ func (l *JSONLoader) loadDataset(key string, dataset DatasetInfo) ([]PoemWithMet
 				continue
 			}
 
-			// Check if file should be excluded
+			// 跳过配置中排除的文件
 			if contains(dataset.Excludes, entry.Name()) {
 				continue
 			}
@@ -149,7 +149,7 @@ func (l *JSONLoader) loadDataset(key string, dataset DatasetInfo) ([]PoemWithMet
 					DatasetKey:  key,
 				}
 
-				// Set default author if not present in data
+				// 数据中没有作者时填入该数据集的默认作者
 				if poemWithMeta.Author == "" {
 					if defaultAuthor := getDefaultAuthorFromDataset(key); defaultAuthor != "" {
 						poemWithMeta.Author = defaultAuthor
@@ -160,7 +160,7 @@ func (l *JSONLoader) loadDataset(key string, dataset DatasetInfo) ([]PoemWithMet
 			}
 		}
 	} else {
-		// Load single file
+		// 单个文件：直接加载
 		filePoems, err := l.loadJSONFile(fullPath, dataset.Tag)
 		if err != nil {
 			return nil, err
@@ -174,7 +174,7 @@ func (l *JSONLoader) loadDataset(key string, dataset DatasetInfo) ([]PoemWithMet
 				DatasetKey:  key,
 			}
 
-			// Set default author if not present in data
+			// 数据中没有作者时填入该数据集的默认作者
 			if poemWithMeta.Author == "" {
 				if defaultAuthor := getDefaultAuthorFromDataset(key); defaultAuthor != "" {
 					poemWithMeta.Author = defaultAuthor
@@ -206,22 +206,22 @@ func (l *JSONLoader) loadJSONFile(path string, tag string) ([]PoemData, error) {
 			Author: getString(raw, "author"),
 		}
 
-		// Handle ID field
+		// ID 字段
 		if id, ok := raw["id"].(string); ok {
 			poem.ID = id
 		}
 
-		// Handle rhythmic (for ci/词)
+		// 词牌名，用于词
 		if rhythmic, ok := raw["rhythmic"].(string); ok {
 			poem.Rhythmic = rhythmic
 		}
 
-		// Handle chapter (for lunyu/论语, sishuwujing/四书五经)
+		// 章节名，用于论语、四书五经
 		if chapter, ok := raw["chapter"].(string); ok {
 			poem.Chapter = chapter
 		}
 
-		// Extract paragraphs based on tag
+		// 按配置的 tag 提取正文
 		switch tag {
 		case "paragraphs":
 			poem.Paragraphs = getStringArray(raw, "paragraphs")
@@ -235,7 +235,7 @@ func (l *JSONLoader) loadJSONFile(path string, tag string) ([]PoemData, error) {
 		case "para":
 			poem.Paragraphs = getStringArray(raw, "para")
 		default:
-			// Try all possible fields
+			// 未指定则依次尝试各个可能的字段
 			if paras := getStringArray(raw, "paragraphs"); len(paras) > 0 {
 				poem.Paragraphs = paras
 			} else if paras := getStringArray(raw, "para"); len(paras) > 0 {
@@ -254,7 +254,7 @@ func (l *JSONLoader) loadJSONFile(path string, tag string) ([]PoemData, error) {
 }
 
 func inferDynasty(key, name string) string {
-	// Map dataset keys to dynasties
+	// 数据集 key 到朝代的映射
 	dynastyMap := map[string]string{
 		"tangsong":          "唐",
 		"songci":            "宋",
@@ -275,7 +275,7 @@ func inferDynasty(key, name string) string {
 		return dynasty
 	}
 
-	// Try to infer from name
+	// 映射表中没有则尝试从名称推断
 	if contains([]string{"唐"}, name) {
 		return "唐"
 	}
@@ -289,7 +289,7 @@ func inferDynasty(key, name string) string {
 	return "其他"
 }
 
-// getDefaultAuthorFromDataset returns the default author for datasets that don't have author field
+// getDefaultAuthorFromDataset 返回数据集的默认作者，用于数据中缺少 author 字段的情况。
 func getDefaultAuthorFromDataset(datasetKey string) string {
 	authorMap := map[string]string{
 		"caocao":      "曹操",

@@ -23,60 +23,52 @@ import (
 )
 
 const (
-	// Error reporting limits
-	MaxErrorsToDisplay = 100 // Maximum number of errors to display
-	MaxErrorsToCollect = 100 // Maximum number of errors to collect
-
-	// Sample error display limit
-	SampleErrorCount = 5 // Number of sample errors to show
+	MaxErrorsToDisplay = 100 // 最多展示的错误数量
+	MaxErrorsToCollect = 100 // 最多收集的错误数量
+	SampleErrorCount   = 5   // 出错时打印的错误样本数量
 )
 
-// getOptimalConfig returns optimal configuration based on system resources
+// getOptimalConfig 根据机器 CPU 核数返回各类缓冲区与批量大小的推荐值。
+// 核数越多配置越激进：2 核（CI 环境）保守，4-8 核折中，10 核以上放开。
 func getOptimalConfig() (workBuffer, resultBuffer, errorBuffer, defaultBatch, minBatch, maxBatch int) {
 	cpuCount := runtime.NumCPU()
 
-	// Adaptive configuration based on CPU count
-	// Low-end (CI): 2 cores  → conservative settings
-	// Mid-range:    4-8 cores → balanced settings
-	// High-end:     10+ cores → aggressive settings
-
 	switch {
 	case cpuCount <= 2:
-		// GitHub Actions, low-end CI
+		// GitHub Actions 等低配 CI
 		return 50, 1000, 50, 200, 50, 300
 
 	case cpuCount <= 4:
-		// Entry-level machines
+		// 入门级机器
 		return 75, 2000, 75, 300, 100, 500
 
 	case cpuCount <= 8:
-		// Mid-range machines
+		// 中端机器
 		return 100, 3000, 100, 400, 150, 700
 
 	default:
-		// High-end machines
+		// 高端机器
 		return 500, 10000, 500, 1000, 500, 2000
 	}
 }
 
-// Processor handles concurrent poetry data processing
+// Processor 负责并发处理诗词数据。
 type Processor struct {
 	repo                 database.RepositoryInterface
 	workers              int
 	convertToTraditional bool
-	batchSize            int // Batch size for database insertion
+	batchSize            int // 写入数据库时的批量大小
 }
 
-// NewProcessor creates a new processor with caching support
+// NewProcessor 创建带缓存能力的处理器，workers <= 0 时按 CPU 核数取值。
 func NewProcessor(repo *database.Repository, workers int, convertToTraditional bool) *Processor {
 	if workers <= 0 {
 		workers = runtime.NumCPU()
 	}
 
-	// Get optimal configuration based on system resources
 	_, _, _, defaultBatch, _, _ := getOptimalConfig()
 
-	// Wrap repository with caching for better performance
+	// 包一层缓存，避免重复查询朝代/作者
 	cachedRepo := database.NewCachedRepository(repo)
 
 	return &Processor{
@@ -87,47 +79,45 @@ func NewProcessor(repo *database.Repository, workers int, convertToTraditional b
 	}
 }
 
-// SetBatchSize sets the batch size for database insertion
+// SetBatchSize 设置写入数据库时的批量大小。
 func (p *Processor) SetBatchSize(size int) {
 	if size > 0 {
 		p.batchSize = size
 	}
 }
 
-// prewarmCache pre-populates the cache with unique dynasties, authors, and poetry types
-// This prevents all workers from hitting the database simultaneously with a cold cache
-// which can cause lock contention and apparent deadlock with SQLite's single-writer model
+// prewarmCache 预先把朝代、作者写入缓存。
+// 若不预热，所有 worker 会在冷缓存下同时读写数据库，
+// 在 SQLite 单写者模型下会造成锁竞争，表现为疑似死锁。
 func (p *Processor) prewarmCache(poems []loader.PoemWithMeta) error {
-	// Extract unique dynasties first (there are very few, ~20)
+	// 先收集去重后的朝代（数量很少，约 20 个）
 	dynastySet := make(map[string]struct{})
 	for _, poem := range poems {
 		if poem.Dynasty != "" {
 			dynasty := poem.Dynasty
-			// Convert if needed
 			converted, err := p.convertText(dynasty, p.convertToTraditional)
 			if err != nil {
-				continue // Skip on error, will be handled during processing
+				continue // 出错则跳过，留到正式处理阶段再报
 			}
 			dynastySet[converted] = struct{}{}
 		}
 	}
 
-	// Pre-warm dynasty cache (sequential, safe)
+	// 串行预热朝代缓存，无并发风险
 	for dynasty := range dynastySet {
 		if _, err := p.repo.GetOrCreateDynasty(dynasty); err != nil {
 			return fmt.Errorf("failed to pre-warm dynasty cache for %q: %w", dynasty, err)
 		}
 	}
 
-	// Extract unique authors (more, but still manageable ~10k)
-	// We need dynasty IDs first, so dynasties must be cached before this
-	authorSet := make(map[string]string) // author name -> dynasty name
+	// 收集去重后的作者（约一万条，仍可接受）。
+	// 作者依赖朝代 ID，所以必须在朝代缓存预热之后执行。
+	authorSet := make(map[string]string) // 作者名 -> 朝代名
 	for _, poem := range poems {
 		author := classifier.NormalizeText(poem.Author)
 		if author == "" {
 			author = "佚名"
 		}
-		// Convert author name
 		converted, err := p.convertText(author, p.convertToTraditional)
 		if err != nil {
 			continue
@@ -141,19 +131,18 @@ func (p *Processor) prewarmCache(poems []loader.PoemWithMeta) error {
 		}
 	}
 
-	// Pre-warm author cache
+	// 预热作者缓存
 	for author, dynasty := range authorSet {
 		var dynastyID int64 = 0
 		if dynasty != "" {
 			var err error
 			dynastyID, err = p.repo.GetOrCreateDynasty(dynasty)
 			if err != nil {
-				continue // Will be handled during processing
+				continue // 留到正式处理阶段再报
 			}
 		}
 		if _, err := p.repo.GetOrCreateAuthor(author, dynastyID); err != nil {
-			// Log but don't fail - will be retried during processing
-			continue
+			continue // 预热失败不影响流程，正式处理时会重试
 		}
 	}
 
@@ -165,7 +154,7 @@ func (p *Processor) prewarmCache(poems []loader.PoemWithMeta) error {
 	return nil
 }
 
-// Process processes all poems with concurrent workers and batch insertion
+// Process 以多 worker 并发处理全部诗词，并批量写入数据库。
 func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 	total := len(poems)
 	logger.Info("Processing poems",
@@ -174,19 +163,17 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 		zap.Int("batch_size", p.batchSize),
 	)
 
-	// Pre-warm the cache before starting workers
-	// This prevents all workers from hitting the DB simultaneously with a cold cache
+	// 启动 worker 前先预热缓存，避免冷缓存下集中冲击数据库
 	if err := p.prewarmCache(poems); err != nil {
 		return fmt.Errorf("failed to pre-warm cache: %w", err)
 	}
 
-	// Create progress container
+	// 进度条容器
 	progress := mpb.New(
 		mpb.WithWidth(60),
 		mpb.WithRefreshRate(100*time.Millisecond),
 	)
 
-	// Create progress bar
 	bar := progress.AddBar(int64(total),
 		mpb.PrependDecorators(
 			decor.Name("Processing: ", decor.WC{W: 12, C: decor.DindentRight}),
@@ -201,9 +188,7 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 		),
 	)
 
-	// Channels for work distribution
-	// Buffer sizes are adaptive based on system resources
-	// Get optimal configuration
+	// 任务分发用的 channel，缓冲区大小随机器配置自适应
 	workBuffer, resultBuffer, errorBuffer, _, _, _ := getOptimalConfig()
 
 	workCh := make(chan PoemWork, workBuffer)
@@ -211,36 +196,35 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 	errorCh := make(chan error, errorBuffer)
 	var wg sync.WaitGroup
 
-	// Progress counter
+	// 进度计数
 	var processed atomic.Int64
 	var errorCount atomic.Int64
 
-	// Start workers to process poems (CPU-intensive work)
+	// 启动 worker 处理诗词（CPU 密集型）
 	for i := range p.workers {
 		wg.Go(func() {
 			for work := range workCh {
 				poem, err := p.processPoem(work)
 				if err != nil {
 					errorCount.Add(1)
-					// Non-blocking error recording
+					// 非阻塞记录错误
 					select {
 					case errorCh <- fmt.Errorf("worker %d: %s - %w", i, work.Title, err):
 					default:
-						// Discard error to avoid blocking
+						// 通道已满则丢弃，避免阻塞
 					}
 					processed.Add(1)
 					bar.Increment()
 					continue
 				}
 
-				// Skip nil poems (e.g., empty content after normalization)
+				// 跳过 nil（如归一化后正文为空的条目）
 				if poem == nil {
 					processed.Add(1)
 					bar.Increment()
 					continue
 				}
 
-				// Send processed poem to result channel
 				resultCh <- poem
 				processed.Add(1)
 				bar.Increment()
@@ -248,40 +232,38 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 		})
 	}
 
-	// Start batch inserter goroutine
+	// 启动批量写入 goroutine
 	insertDone := make(chan error, 1)
 	go func() {
 		insertDone <- p.batchInserter(resultCh)
 	}()
 
-	// Send work to workers
+	// 分发任务
 	go func() {
 		for i, poem := range poems {
 			workCh <- PoemWork{
 				PoemWithMeta: poem,
-				ID:           int64(i + 1), // Sequential ID starting from 1
+				ID:           int64(i + 1), // 从 1 开始的顺序 ID
 			}
 		}
 		close(workCh)
 	}()
 
-	// Wait for all workers to finish processing
 	wg.Wait()
 
-	// Complete the processing progress bar before starting insertion
-	bar.SetTotal(int64(total), true) // Mark as complete
-	progress.Wait()                  // Wait for processing bar to finish rendering
+	// 写入阶段开始前，先让处理进度条收尾
+	bar.SetTotal(int64(total), true) // 标记为已完成
+	progress.Wait()                  // 等待进度条渲染结束
 
-	close(resultCh) // Signal batch inserter to finish
+	close(resultCh) // 通知批量写入协程收尾
 
-	// Wait for batch inserter to complete
 	if err := <-insertDone; err != nil {
 		return fmt.Errorf("batch insertion failed: %w", err)
 	}
 
 	close(errorCh)
 
-	// Collect errors (non-blocking)
+	// 收集错误（此时通道已关闭，不会阻塞）
 	var errors []error
 	for err := range errorCh {
 		errors = append(errors, err)
@@ -290,7 +272,7 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 		}
 	}
 
-	// Print summary
+	// 输出汇总结果
 	successCount := processed.Load()
 	failCount := errorCount.Load()
 
@@ -312,11 +294,10 @@ func (p *Processor) Process(poems []loader.PoemWithMeta) error {
 	return nil
 }
 
-// batchInserter collects poems and inserts them using large transactions
-// This approach reduces fsync overhead by grouping many inserts into fewer transactions
+// batchInserter 汇总处理完的诗词，用大事务批量写库。
+// 把大量 INSERT 合并到少数几个事务里，可显著降低 fsync 开销。
 func (p *Processor) batchInserter(resultCh <-chan *database.Poem) error {
-	// Collect all poems first (they're already processed)
-	// Filter out nil poems as a safety measure
+	// 先收齐所有已处理的诗词，顺带过滤 nil 作为兜底
 	allPoems := make([]*database.Poem, 0, cap(resultCh))
 
 	for poem := range resultCh {
@@ -331,21 +312,19 @@ func (p *Processor) batchInserter(resultCh <-chan *database.Poem) error {
 
 	logger.Info("Batch inserter starting", zap.Int("poems", len(allPoems)))
 
-	// Create a new progress container for insertion
+	// 写入阶段单独用一个进度条容器
 	progress := mpb.New(
 		mpb.WithWidth(60),
 		mpb.WithRefreshRate(100*time.Millisecond),
 	)
 
-	// Use large transactions for maximum performance
-	// Transaction size: 20,000 poems per transaction (reduces fsync calls)
-	// Batch size: use current configured batch size for inserts within transaction
+	// 每个事务写入 2 万首以减少 fsync 次数，
+	// 事务内部再按当前配置的 batchSize 分批 INSERT
 	transactionSize := 20000
 
 	err := p.repo.BatchInsertPoemsWithTransaction(allPoems, transactionSize, p.batchSize, progress)
 
-	// Wait for progress bar to finish rendering
-	progress.Wait()
+	progress.Wait() // 等待进度条渲染结束
 
 	if err != nil {
 		return fmt.Errorf("failed to insert poems with transactions: %w", err)
@@ -355,68 +334,61 @@ func (p *Processor) batchInserter(resultCh <-chan *database.Poem) error {
 	return nil
 }
 
-// resolveTitleByCategory determines the final title based on poetry type category
-// Different categories use different source fields:
-// - 词 (Ci): use rhythmic (词牌名) as title, merge with subtitle if present
-// - 论语/四书五经: use chapter as title
-// - Others (诗/曲/诗经/楚辞/蒙学): use title
+// resolveTitleByCategory 依据诗词类别决定最终标题，不同类别取自不同的源字段：
+//   - 词：取词牌名（rhythmic），若另有标题则拼成「词牌名·副标题」
+//   - 论语 / 四书五经：取章节名（chapter）
+//   - 其余（诗、曲、诗经、楚辞、蒙学等）：直接取标题
 func resolveTitleByCategory(poem loader.PoemData, category string) string {
 	switch category {
-	case "词", "宋词": // 宋词/五代词 - use rhythmic (词牌名) as title
+	case "词", "宋词": // 宋词、五代词，以词牌名为主标题
 		if poem.Rhythmic != "" {
-			// Rhythmic is the main title (词牌名)
-			// If there's also a title, merge them as "词牌名·副标题"
 			if poem.Title != "" && poem.Title != poem.Rhythmic {
 				return poem.Rhythmic + "·" + poem.Title
 			}
 			return poem.Rhythmic
 		}
-		// Fallback to title if no rhythmic
-		return poem.Title
+		return poem.Title // 无词牌名时回退到标题
 
-	case "论语", "四书五经": // Use chapter as title
+	case "论语", "四书五经":
 		if poem.Chapter != "" {
 			return poem.Chapter
 		}
-		// Fallback to title if no chapter
-		return poem.Title
+		return poem.Title // 无章节名时回退到标题
 
-	default: // 唐诗, 元曲, 诗经, 楚辞, 蒙学, etc. - use title
+	default: // 唐诗、元曲、诗经、楚辞、蒙学等
 		return poem.Title
 	}
 }
 
+// processPoem 把单条原始数据加工成可入库的 Poem，
+// 返回 (nil, nil) 表示该条目应被静默跳过。
+
 func (p *Processor) processPoem(work PoemWork) (*database.Poem, error) {
 	poem := work.PoemData
 
-	// Normalize all text fields (trim whitespace)
-	// NormalizeAndSplitParagraphs also fixes sentences that were merged into a
-	// single string (e.g. "A。B。" → ["A。","B。"]).
+	// 归一化各文本字段（去除首尾空白）。
+	// NormalizeAndSplitParagraphs 还会拆分被合并成一句的正文
+	// （如 "A。B。" → ["A。","B。"]）。
 	author := classifier.NormalizeText(poem.Author)
 	paragraphs := classifier.NormalizeAndSplitParagraphs(poem.Paragraphs)
 	rhythmic := classifier.NormalizeText(poem.Rhythmic)
 
-	// Skip poems with empty content after normalization (return nil to skip silently)
+	// 归一化后正文为空则跳过
 	if len(paragraphs) == 0 {
 		return nil, nil
 	}
 
-	// Skip placeholder content (无正文。/ 無正文。/ 空。)
+	// 跳过占位正文（无正文。/ 無正文。/ 空。）
 	if classifier.IsPlaceholderContent(paragraphs) {
 		return nil, nil
 	}
 
-	// Assign default author for poems without author
 	if author == "" {
-		author = "佚名" // Anonymous/Unknown author
+		author = "佚名"
 	}
-	// Allow poems without title if they have content
-	// Some poems may only have paragraphs without a formal title
+	// 只要有正文即可入库，允许没有正式标题
 
-	// Normalize Chinese characters for consistency
-	// Traditional DB: convert to traditional
-	// Simplified DB: convert to simplified
-
+	// 统一简繁：繁体库转繁体，简体库转简体
 	author, err := p.convertText(author, p.convertToTraditional)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert author: %w", err)
@@ -434,8 +406,7 @@ func (p *Processor) processPoem(work PoemWork) (*database.Poem, error) {
 		}
 	}
 
-	// Get or create dynasty
-	// Convert dynasty name to match database encoding (traditional or simplified)
+	// 朝代名同样要转成与目标库一致的简繁形式
 	dynastyName, err := p.convertText(work.Dynasty, p.convertToTraditional)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert dynasty name: %w", err)
@@ -445,16 +416,14 @@ func (p *Processor) processPoem(work PoemWork) (*database.Poem, error) {
 		return nil, fmt.Errorf("failed to get/create dynasty: %w", err)
 	}
 
-	// Get or create author
 	authorID, err := p.repo.GetOrCreateAuthor(author, dynastyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get/create author: %w", err)
 	}
 
-	// Classify poetry type using dataset source information and title
+	// 结合数据集来源与标题判定诗词体裁
 	typeInfo := classifier.ClassifyPoetryTypeWithDataset(paragraphs, rhythmic, work.DatasetKey, poem.Title)
 
-	// Convert type name to match database encoding
 	typeName, err := p.convertText(typeInfo.TypeName, p.convertToTraditional)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert type name: %w", err)
@@ -465,37 +434,34 @@ func (p *Processor) processPoem(work PoemWork) (*database.Poem, error) {
 		return nil, fmt.Errorf("failed to get poetry type: %w", err)
 	}
 
-	// Resolve final title based on category (handles 词/论语/四书五经/etc.)
-	// This intelligently maps different source fields (title/rhythmic/chapter) to the final title
+	// 按类别在 title / rhythmic / chapter 之间挑选最终标题
 	finalTitle := resolveTitleByCategory(poem, typeInfo.Category)
 
-	// Convert final title
 	finalTitle, err = p.convertText(finalTitle, p.convertToTraditional)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert final title: %w", err)
 	}
 
-	// Use sequential ID assigned during processing
+	// 使用分发阶段分配的顺序 ID
 	poemID := work.ID
 
-	// Convert paragraphs to JSON for storage
+	// 正文以 JSON 数组形式存储
 	contentJSON, err := json.Marshal(paragraphs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal paragraphs: %w", err)
 	}
 
-	// Calculate content hash for deduplication.
-	// Hash the plain joined text (not the JSON bytes) so that poems whose
-	// sentences were originally merged ("A。B。") hash identically to the
-	// correctly-split version (["A。","B。"]) after normalization.
+	// 计算正文哈希用于去重。
+	// 这里对拼接后的纯文本取哈希（而非 JSON 字节），
+	// 这样原本被合并成一句的正文（"A。B。"）在归一化后
+	// 与正确拆分的版本（["A。","B。"]）能得到相同的哈希值。
 	joinedText := strings.Join(paragraphs, "")
 	hash := sha256.Sum256([]byte(joinedText))
 	contentHash := hex.EncodeToString(hash[:])
 
-	// Create poem record
 	dbPoem := &database.Poem{
 		ID:          poemID,
-		Title:       finalTitle, // Category-aware title (may be from title/rhythmic/chapter)
+		Title:       finalTitle, // 按类别选出的标题，可能来自 title/rhythmic/chapter
 		AuthorID:    &authorID,
 		DynastyID:   &dynastyID,
 		TypeID:      &typeID,
@@ -506,7 +472,7 @@ func (p *Processor) processPoem(work PoemWork) (*database.Poem, error) {
 	return dbPoem, nil
 }
 
-// convertText converts text to either traditional or simplified Chinese based on the flag
+// convertText 按 toTraditional 标志把文本转为繁体或简体。
 func (p *Processor) convertText(text string, toTraditional bool) (string, error) {
 	if toTraditional {
 		return classifier.ToTraditional(text)
@@ -514,7 +480,7 @@ func (p *Processor) convertText(text string, toTraditional bool) (string, error)
 	return classifier.ToSimplified(text)
 }
 
-// convertTextArray converts an array of text to either traditional or simplified Chinese
+// convertTextArray 按 toTraditional 标志批量转换文本的简繁形式。
 func (p *Processor) convertTextArray(texts []string, toTraditional bool) ([]string, error) {
 	if toTraditional {
 		return classifier.ToTraditionalArray(texts)

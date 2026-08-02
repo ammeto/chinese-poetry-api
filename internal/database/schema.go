@@ -1,12 +1,12 @@
 package database
 
 const (
-	// Schema version for migrations
+	// SchemaVersion 是当前的数据库结构版本号
 	SchemaVersion = 1
 )
 
-// InitialDynastiesSQL contains initial data for dynasties
-// Ordered chronologically by start_year for consistent ID assignment
+// InitialDynastiesSQL 是朝代表的初始数据，
+// 按 start_year 的时间先后排列，以保证 ID 分配稳定。
 var InitialDynastiesSQL = `INSERT OR IGNORE INTO dynasties (name, name_en, start_year, end_year) VALUES
 	('先秦', 'Pre-Qin', -2070, -221),
 	('两汉', 'Han', -206, 220),
@@ -20,18 +20,18 @@ var InitialDynastiesSQL = `INSERT OR IGNORE INTO dynasties (name, name_en, start
 	('清', 'Qing', 1644, 1912),
 	('其他', 'Other', NULL, NULL)`
 
-// InitialPoetryTypesSQL contains initial data for poetry types
-// IDs use semantic ranges for easy categorization and extension:
+// InitialPoetryTypesSQL 是体裁表的初始数据。
+// ID 按语义分段，便于归类与后续扩展：
 //
-//	10-19: 诗 (Poetry) - 包括唐诗、古诗等
-//	20-29: 词 (Ci) - 包括宋词、五代词等
-//	30-39: 曲 (Qu) - 元曲
-//	40-49: 蒙学 (Primer)
-//	50-59: 诗经 (Book of Songs)
-//	60-69: 论语 (Analects)
-//	70-79: 楚辞 (Songs of Chu)
-//	80-89: 四书五经 (Four Books and Five Classics)
-//	99: 其他 (Other)
+//	10-19：诗，含唐诗、古诗等
+//	20-29：词，含宋词、五代词等
+//	30-39：曲，即元曲
+//	40-49：蒙学
+//	50-59：诗经
+//	60-69：论语
+//	70-79：楚辞
+//	80-89：四书五经
+//	99：其他
 var InitialPoetryTypesSQL = `INSERT OR IGNORE INTO poetry_types (id, name, category, lines, chars_per_line, description) VALUES
 	(10, '唐诗', '唐诗', NULL, NULL, '诗'),
 	(11, '五言绝句', '唐诗', 4, 5, '四句，每句五字'),

@@ -6,7 +6,7 @@ import (
 	"gorm.io/datatypes"
 )
 
-// Dynasty represents a historical dynasty
+// Dynasty 表示一个历史朝代。
 type Dynasty struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name      string    `gorm:"not null;uniqueIndex"     json:"name"`
@@ -16,27 +16,27 @@ type Dynasty struct {
 	CreatedAt time.Time `gorm:"autoCreateTime"           json:"created_at"`
 }
 
-// TableName specifies the table name for Dynasty
+// TableName 返回 Dynasty 的默认表名。
 func (Dynasty) TableName() string {
 	return "dynasties"
 }
 
-// Author represents a poet or author
+// Author 表示一位诗人或作者。
 type Author struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"` // Auto-increment ID
-	Name        string    `gorm:"not null;uniqueIndex" json:"name"`   // uniqueIndex prevents duplicates
+	ID          int64     `gorm:"primaryKey;autoIncrement" json:"id"` // 自增主键
+	Name        string    `gorm:"not null;uniqueIndex" json:"name"`   // 唯一索引，防止重复
 	DynastyID   *int64    `gorm:"index"                json:"dynasty_id,omitempty"`
 	Dynasty     *Dynasty  `gorm:"foreignKey:DynastyID" json:"dynasty,omitempty"`
 	Description *string   `                            json:"description,omitempty"`
 	CreatedAt   time.Time `gorm:"autoCreateTime"       json:"created_at"`
 }
 
-// TableName specifies the table name for Author
+// TableName 返回 Author 的默认表名。
 func (Author) TableName() string {
 	return "authors"
 }
 
-// PoetryType represents a type of poetry
+// PoetryType 表示一种诗词体裁。
 type PoetryType struct {
 	ID           int64     `gorm:"primaryKey"               json:"id"`
 	Name         string    `gorm:"not null;uniqueIndex"     json:"name"`
@@ -47,19 +47,19 @@ type PoetryType struct {
 	CreatedAt    time.Time `gorm:"autoCreateTime"           json:"created_at"`
 }
 
-// TableName specifies the table name for PoetryType
+// TableName 返回 PoetryType 的默认表名。
 func (PoetryType) TableName() string {
 	return "poetry_types"
 }
 
-// Poem represents a poem or ci
+// Poem 表示一首诗或词。
 type Poem struct {
-	ID          int64          `gorm:"primaryKey"                                                json:"id"` // Changed from string to int64
+	ID          int64          `gorm:"primaryKey"                                                json:"id"`
 	TypeID      *int64         `gorm:"index"                                                     json:"type_id,omitempty"`
 	Type        *PoetryType    `gorm:"foreignKey:TypeID"                                         json:"type,omitempty"`
 	Title       string         `gorm:"not null;index;uniqueIndex:idx_unique_poem,composite:title" json:"title"`
-	Content     datatypes.JSON `gorm:"type:json;not null"                                        json:"content"` // JSON array of paragraphs
-	ContentHash string         `gorm:"size:64;uniqueIndex:idx_unique_poem,composite:content_hash" json:"-"`      // SHA256 hash of joined text for deduplication
+	Content     datatypes.JSON `gorm:"type:json;not null"                                        json:"content"` // 以 JSON 数组存放的正文段落
+	ContentHash string         `gorm:"size:64;uniqueIndex:idx_unique_poem,composite:content_hash" json:"-"`      // 正文拼接后的 SHA256，用于去重
 	AuthorID    *int64         `gorm:"index"                                                     json:"author_id,omitempty"`
 	Author      *Author        `gorm:"foreignKey:AuthorID"                                       json:"author,omitempty"`
 	DynastyID   *int64         `gorm:"index"                                                     json:"dynasty_id,omitempty"`
@@ -67,31 +67,31 @@ type Poem struct {
 	CreatedAt   time.Time      `gorm:"autoCreateTime"                                            json:"created_at"`
 }
 
-// TableName specifies the table name for Poem
+// TableName 返回 Poem 的默认表名。
 func (Poem) TableName() string {
 	return "poems"
 }
 
-// AuthorWithStats includes statistics
+// AuthorWithStats 是附带统计数据的作者。
 type AuthorWithStats struct {
 	Author
 	PoemCount int `json:"poem_count"`
 }
 
-// DynastyWithStats includes statistics
+// DynastyWithStats 是附带统计数据的朝代。
 type DynastyWithStats struct {
 	Dynasty
 	PoemCount   int `json:"poem_count"`
 	AuthorCount int `json:"author_count"`
 }
 
-// PoetryTypeWithStats includes statistics
+// PoetryTypeWithStats 是附带统计数据的体裁。
 type PoetryTypeWithStats struct {
 	PoetryType
 	PoemCount int `json:"poem_count"`
 }
 
-// Statistics holds overall statistics
+// Statistics 汇总全库的整体统计数据。
 type Statistics struct {
 	TotalPoems     int                   `json:"total_poems"`
 	TotalAuthors   int                   `json:"total_authors"`
@@ -100,7 +100,7 @@ type Statistics struct {
 	PoemsByType    []PoetryTypeWithStats `json:"poems_by_type"`
 }
 
-// PageInfo represents pagination information
+// PageInfo 描述分页信息。
 type PageInfo struct {
 	HasNextPage     bool    `json:"has_next_page"`
 	HasPreviousPage bool    `json:"has_previous_page"`
@@ -108,27 +108,27 @@ type PageInfo struct {
 	EndCursor       *string `json:"end_cursor,omitempty"`
 }
 
-// PoemConnection represents a paginated list of poems
+// PoemConnection 是诗词的分页结果集。
 type PoemConnection struct {
 	Edges      []PoemEdge `json:"edges"`
 	PageInfo   PageInfo   `json:"page_info"`
 	TotalCount int        `json:"total_count"`
 }
 
-// PoemEdge represents a single poem in a connection
+// PoemEdge 是结果集中的单条诗词。
 type PoemEdge struct {
 	Node   Poem   `json:"node"`
 	Cursor string `json:"cursor"`
 }
 
-// AuthorConnection represents a paginated list of authors
+// AuthorConnection 是作者的分页结果集。
 type AuthorConnection struct {
 	Edges      []AuthorEdge `json:"edges"`
 	PageInfo   PageInfo     `json:"page_info"`
 	TotalCount int          `json:"total_count"`
 }
 
-// AuthorEdge represents a single author in a connection
+// AuthorEdge 是结果集中的单个作者。
 type AuthorEdge struct {
 	Node   AuthorWithStats `json:"node"`
 	Cursor string          `json:"cursor"`

@@ -10,23 +10,22 @@ import (
 )
 
 const (
-	// idleTTL is how long an unused per-client limiter is kept. It only needs
-	// to outlive the burst it is tracking: once a client has been quiet for
-	// this long its limiter is back at full tokens, so dropping it and creating
-	// a fresh one on the next request is indistinguishable from keeping it.
+	// idleTTL 是闲置的单客户端限流器的保留时长。它只需长于所跟踪的突发窗口即可：
+	// 客户端静默这么久之后，其令牌桶已经回满，此时丢弃它、待下次请求再新建一个，
+	// 与一直保留在效果上没有区别。
 	idleTTL = 10 * time.Minute
 
-	// sweepInterval is how often expired limiters are collected.
+	// sweepInterval 是回收过期限流器的间隔。
 	sweepInterval = time.Minute
 )
 
-// clientLimiter is a per-client limiter plus the time it was last used.
+// clientLimiter 是单个客户端的限流器及其最近一次使用时间。
 type clientLimiter struct {
 	limiter  *rate.Limiter
 	lastSeen time.Time
 }
 
-// RateLimiter holds rate limiting configuration
+// RateLimiter 保存限流配置及各客户端的限流器。
 type RateLimiter struct {
 	limiters map[string]*clientLimiter
 	mu       sync.Mutex
@@ -37,12 +36,11 @@ type RateLimiter struct {
 	stopOnce sync.Once
 }
 
-// NewRateLimiter creates a new rate limiter and starts a goroutine that evicts
-// limiters idle for longer than idleTTL. Call Stop to release it.
+// NewRateLimiter 创建限流器，并启动一个协程回收闲置超过 idleTTL 的限流器，
+// 用完需调用 Stop 释放。
 //
-// Without eviction the map only ever grows: it holds one entry per client IP
-// ever seen, and ClientIP trusts forwarding headers, so the set of keys is
-// effectively attacker-controlled.
+// 若不回收，这个 map 只增不减：每个出现过的客户端 IP 都会占一个条目，
+// 而 ClientIP 会信任转发头，等于让攻击者控制 key 的取值范围。
 func NewRateLimiter(rps float64, burst int) *RateLimiter {
 	rl := &RateLimiter{
 		limiters: make(map[string]*clientLimiter),
@@ -56,7 +54,7 @@ func NewRateLimiter(rps float64, burst int) *RateLimiter {
 	return rl
 }
 
-// Stop ends the eviction goroutine. Safe to call more than once.
+// Stop 结束回收协程，可安全重复调用。
 func (rl *RateLimiter) Stop() {
 	rl.stopOnce.Do(func() { close(rl.stop) })
 }
@@ -75,7 +73,7 @@ func (rl *RateLimiter) sweepLoop() {
 	}
 }
 
-// sweep drops limiters that have been idle for longer than idleTTL.
+// sweep 清理闲置超过 idleTTL 的限流器。
 func (rl *RateLimiter) sweep(now time.Time) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -87,13 +85,13 @@ func (rl *RateLimiter) sweep(now time.Time) {
 	}
 }
 
-// getLimiter returns a rate limiter for the given key (IP address), recording
-// the access so an idle client's limiter can later be swept.
+// getLimiter 返回指定 key（客户端 IP）对应的限流器，
+// 同时记录访问时间，以便后续回收闲置客户端的限流器。
 func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 	now := time.Now()
 
-	// A plain Mutex rather than RWLock: every call writes lastSeen, so the
-	// read-only fast path a RWMutex would buy no longer exists.
+	// 这里用普通 Mutex 而非 RWMutex：每次调用都要写 lastSeen，
+	// RWMutex 所能带来的只读快路径已不复存在。
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -108,7 +106,7 @@ func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 	return limiter
 }
 
-// Middleware returns a Gin middleware function for rate limiting
+// Middleware 返回用于限流的 Gin 中间件。
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.ClientIP()

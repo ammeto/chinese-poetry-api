@@ -5,21 +5,20 @@ import (
 	"unicode"
 )
 
-// NormalizeText normalizes text by trimming whitespace and removing extra spaces
+// NormalizeText 归一化文本：去除首尾空白，并把连续空白压缩为单个空格。
 func NormalizeText(text string) string {
-	// Trim leading and trailing whitespace
 	text = strings.TrimSpace(text)
 
-	// Replace multiple spaces with single space
+	// 连续空白压缩为一个空格
 	text = strings.Join(strings.Fields(text), " ")
 
 	return text
 }
 
-// hasValidContent checks if text contains actual content beyond punctuation and whitespace
+// hasValidContent 判断文本除标点和空白外是否还有实际内容。
 func hasValidContent(text string) bool {
 	for _, r := range text {
-		// If we find any character that's not punctuation or whitespace, it's valid content
+		// 只要出现一个既非标点也非空白的字符，就认为有实际内容
 		if !unicode.IsPunct(r) && !unicode.IsSpace(r) {
 			return true
 		}
@@ -27,13 +26,12 @@ func hasValidContent(text string) bool {
 	return false
 }
 
-// NormalizeTextArray normalizes an array of text strings and filters out invalid entries
-// Invalid entries include: empty strings, whitespace-only, or punctuation-only content
+// NormalizeTextArray 批量归一化文本并剔除无效项，
+// 无效项包括空串、纯空白以及只有标点的内容。
 func NormalizeTextArray(texts []string) []string {
 	result := make([]string, 0, len(texts))
 	for _, text := range texts {
 		normalized := NormalizeText(text)
-		// Filter out empty strings and punctuation-only content
 		if normalized != "" && hasValidContent(normalized) {
 			result = append(result, normalized)
 		}
@@ -41,7 +39,7 @@ func NormalizeTextArray(texts []string) []string {
 	return result
 }
 
-// TrimAllWhitespace removes all whitespace characters from text
+// TrimAllWhitespace 移除文本中的所有空白字符。
 func TrimAllWhitespace(text string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
@@ -51,21 +49,19 @@ func TrimAllWhitespace(text string) string {
 	}, text)
 }
 
-// placeholderPhrases are sentinel strings used in source data to indicate that
-// a poem has no actual content and should be skipped during import.
+// placeholderPhrases 是原始数据中表示「本篇无正文」的占位串，导入时应当整条跳过。
 var placeholderPhrases = []string{
 	"无正文。",
 	"無正文。",
 	"空。",
 }
 
-// IsPlaceholderContent reports whether all content in paragraphs is a
-// placeholder indicating the poem has no real text (e.g. "无正文。", "空。").
+// IsPlaceholderContent 判断整段正文是否只是「无正文。」「空。」这类占位内容。
 func IsPlaceholderContent(paragraphs []string) bool {
 	if len(paragraphs) == 0 {
 		return false
 	}
-	// Join all paragraphs and compare against each placeholder
+	// 拼接后与各占位串逐一比对
 	joined := strings.Join(paragraphs, "")
 	for _, p := range placeholderPhrases {
 		if joined == p {
@@ -75,7 +71,7 @@ func IsPlaceholderContent(paragraphs []string) bool {
 	return false
 }
 
-// NormalizePointer normalizes a pointer to string
+// NormalizePointer 归一化字符串指针，归一化后为空则返回 nil。
 func NormalizePointer(text *string) *string {
 	if text == nil {
 		return nil
@@ -87,7 +83,7 @@ func NormalizePointer(text *string) *string {
 	return &normalized
 }
 
-// isClosingQuote reports whether r is a Chinese closing quotation mark.
+// isClosingQuote 判断 r 是否为中文右引号或右括号类符号。
 func isClosingQuote(r rune) bool {
 	return r == '\u201D' || // "
 		r == '\u300B' || // 》
@@ -96,10 +92,9 @@ func isClosingQuote(r rune) bool {
 		r == '\u300F' // 』
 }
 
-// SplitSentences splits a Chinese text string into individual sentences by
-// breaking on sentence-ending punctuation (。！？), optionally followed by a
-// closing quotation mark. If the text contains no sentence-ending punctuation
-// the original text is returned as a single-element slice.
+// SplitSentences 按句末标点（。！？）把中文文本切分成单句，
+// 句末标点后紧跟的右引号会一并归入该句。
+// 若文本中不含任何句末标点，则原样返回长度为 1 的切片。
 func SplitSentences(text string) []string {
 	runes := []rune(text)
 	n := len(runes)
@@ -113,10 +108,10 @@ func SplitSentences(text string) []string {
 		r := runes[i]
 		if r == '。' || r == '！' || r == '？' {
 			end := i + 1
-			// Include optional trailing closing quote
+			// 句末标点后若紧跟右引号，一并纳入本句
 			if end < n && isClosingQuote(runes[end]) {
 				end++
-				i++ // skip closing quote in the next iteration
+				i++ // 下一轮循环跳过该右引号
 			}
 			s := strings.TrimSpace(string(runes[start:end]))
 			if s != "" && hasValidContent(s) {
@@ -126,7 +121,7 @@ func SplitSentences(text string) []string {
 		}
 	}
 
-	// Remaining content that does not end with terminal punctuation
+	// 收尾：处理末尾没有句末标点的残余内容
 	if start < n {
 		s := strings.TrimSpace(string(runes[start:]))
 		if s != "" && hasValidContent(s) {
@@ -140,10 +135,9 @@ func SplitSentences(text string) []string {
 	return sentences
 }
 
-// NormalizeAndSplitParagraphs normalizes each paragraph and splits merged
-// sentences into individual elements. Use this instead of NormalizeTextArray
-// when the source data may contain multiple sentences concatenated into a
-// single string (e.g. "A。B。" instead of ["A。","B。"]).
+// NormalizeAndSplitParagraphs 逐段归一化，并把粘连在一起的句子拆成独立元素。
+// 当原始数据可能把多句合并成一个字符串时（如 "A。B。" 而非 ["A。","B。"]），
+// 应使用本函数而非 NormalizeTextArray。
 func NormalizeAndSplitParagraphs(paragraphs []string) []string {
 	var result []string
 	for _, p := range paragraphs {

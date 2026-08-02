@@ -18,12 +18,11 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/graph/generated"
 )
 
-// setupLangTestEnv builds a GraphQL client over a file-backed database.
+// setupLangTestEnv 基于文件型数据库构建 GraphQL 测试客户端。
 //
-// A file is used rather than ":memory:" because each SQLite connection to
-// ":memory:" gets its own private database, so once gqlgen resolves fields
-// concurrently the extra pool connections see an unmigrated, empty schema and
-// queries fail with spurious "no such table" errors.
+// 这里用文件而非 ":memory:"：每条连到 ":memory:" 的 SQLite 连接都会得到
+// 各自独立的库，一旦 gqlgen 并发解析字段，连接池中新增的连接看到的是
+// 未迁移的空库，查询会莫名报 "no such table"。
 func setupLangTestEnv(t *testing.T) (*client.Client, *database.Repository) {
 	gormDB, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "test.db")), &gorm.Config{})
 	require.NoError(t, err)
@@ -38,8 +37,8 @@ func setupLangTestEnv(t *testing.T) (*client.Client, *database.Repository) {
 	return client.New(srv), repo
 }
 
-// seedVariant writes one poem with a variant-specific title so a query that
-// reads the wrong table is visible in the result rather than merely plausible.
+// seedVariant 为每个语言变体写入一首标题各不相同的诗，
+// 这样一旦查错了表，结果本身就会暴露问题，而不是看上去似乎也说得通。
 func seedVariant(t *testing.T, repo *database.Repository, lang database.Lang, title, author string) {
 	langRepo := repo.WithLang(lang)
 
@@ -57,11 +56,10 @@ func seedVariant(t *testing.T, repo *database.Repository, lang database.Lang, ti
 	}))
 }
 
-// TestGraphQLLangSelectsVariant covers the lang argument, which used to have no
-// effect anywhere in the GraphQL API. Two defects combined: gqlgen's autobind
-// turned the enum literal straight into database.Lang("ZH_HANT"), a value equal
-// to neither variant constant so every table helper fell through to simplified;
-// and poems/poem/authors/author never called WithLang at all.
+// TestGraphQLLangSelectsVariant 覆盖 lang 参数——它曾经在整个 GraphQL API 中都不起作用。
+// 起因是两个缺陷叠加：gqlgen 的 autobind 把枚举字面量直接转成 database.Lang("ZH_HANT")，
+// 该取值与两个变体常量都不相等，导致所有表名辅助函数都落到简体分支；
+// 而 poems/poem/authors/author 这几个 resolver 干脆从未调用过 WithLang。
 func TestGraphQLLangSelectsVariant(t *testing.T) {
 	c, repo := setupLangTestEnv(t)
 	seedVariant(t, repo, database.LangHans, "简体标题", "李白")
@@ -125,10 +123,9 @@ func TestGraphQLLangSelectsVariant(t *testing.T) {
 	})
 }
 
-// TestSearchPoemsCursors covers searchPoems' connection, which it used to build
-// by hand: cursors were numbered from 0 within each page, so page 2's first edge
-// carried the same cursor as page 1's, and startCursor/endCursor were left unset
-// even though every other connection populates them.
+// TestSearchPoemsCursors 覆盖 searchPoems 的 connection——它曾是手写构造的：
+// 游标在每页内都从 0 开始编号，于是第 2 页首条边的游标与第 1 页的相同；
+// 而且没有填 startCursor 与 endCursor，与其他所有 connection 的行为不一致。
 func TestSearchPoemsCursors(t *testing.T) {
 	c, repo := setupLangTestEnv(t)
 
@@ -185,16 +182,16 @@ func TestSearchPoemsCursors(t *testing.T) {
 	assert.Equal(t, "2", *start2)
 }
 
-// TestAuthorListingTieBreak covers paging over authors whose poem_count ties.
-// Ordering by poem_count alone is not a total order, so which of the tied rows
-// a given LIMIT/OFFSET window returns is unspecified.
+// TestAuthorListingTieBreak 覆盖 poem_count 相同的作者的分页场景。
+// 仅按 poem_count 排序并非全序，因此某个 LIMIT/OFFSET 窗口
+// 究竟返回并列行中的哪几条是不确定的。
 func TestAuthorListingTieBreak(t *testing.T) {
 	c, repo := setupLangTestEnv(t)
 
 	dynastyID, err := repo.GetOrCreateDynasty("唐")
 	require.NoError(t, err)
 
-	// Every author gets exactly one poem, so poem_count ties across all of them.
+	// 每位作者都恰好一首诗，于是所有人的 poem_count 全部并列
 	const authorCount = 12
 	for i := range authorCount {
 		name := "作者" + strconv.Itoa(i)
@@ -231,10 +228,7 @@ func TestAuthorListingTieBreak(t *testing.T) {
 	}
 }
 
-// TestGraphQLCountFields covers the poemCount/authorCount fields, which counted
-// via db.Model(&Poem{}). That resolves to Poem.TableName() - the legacy
-// unsuffixed "poems", dropped when the language-variant tables were introduced -
-// so every one of these fields failed with "no such table: poems".
+// TestGraphQLCountFields 覆盖 poemCount/authorCount 字段
 func TestGraphQLCountFields(t *testing.T) {
 	c, repo := setupLangTestEnv(t)
 	seedVariant(t, repo, database.LangHans, "简体标题", "李白")

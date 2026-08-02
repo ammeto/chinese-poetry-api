@@ -1,38 +1,37 @@
 package database
 
-// Statistics and counting methods
+// 本文件包含各类统计与计数方法。
 
-// CountPoems returns the total number of poems
+// CountPoems 返回诗词总数。
 func (r *Repository) CountPoems() (int, error) {
 	var count int64
 	err := r.db.Table(r.poemsTable()).Count(&count).Error
 	return int(count), err
 }
 
-// CountAuthors returns the total number of authors
+// CountAuthors 返回作者总数。
 func (r *Repository) CountAuthors() (int, error) {
 	var count int64
 	err := r.db.Table(r.authorsTable()).Count(&count).Error
 	return int(count), err
 }
 
-// CountPoemsByAuthor returns the number of poems attributed to an author.
+// CountPoemsByAuthor 返回某位作者名下的作品数。
 func (r *Repository) CountPoemsByAuthor(authorID int64) (int, error) {
 	return r.countPoemsWhere("author_id = ?", authorID)
 }
 
-// CountPoemsByDynasty returns the number of poems from a dynasty.
+// CountPoemsByDynasty 返回某个朝代的作品数。
 func (r *Repository) CountPoemsByDynasty(dynastyID int64) (int, error) {
 	return r.countPoemsWhere("dynasty_id = ?", dynastyID)
 }
 
-// CountPoemsByType returns the number of poems of a poetry type.
+// CountPoemsByType 返回某种体裁的作品数。
 func (r *Repository) CountPoemsByType(typeID int64) (int, error) {
 	return r.countPoemsWhere("type_id = ?", typeID)
 }
 
-// CountAuthorsByDynasty returns the number of distinct authors with at least
-// one poem in a dynasty.
+// CountAuthorsByDynasty 返回某朝代下至少有一首作品的作者数（去重）。
 func (r *Repository) CountAuthorsByDynasty(dynastyID int64) (int, error) {
 	var count int64
 	err := r.db.Table(r.poemsTable()).
@@ -42,22 +41,22 @@ func (r *Repository) CountAuthorsByDynasty(dynastyID int64) (int, error) {
 	return int(count), err
 }
 
-// countPoemsWhere counts poems matching a single condition. It exists so these
-// counts go through poemsTable() like every other query: the GraphQL resolvers
-// used to count via db.Model(&Poem{}), which resolves to Poem.TableName() -
-// the legacy unsuffixed "poems", a table that no longer exists after the
-// language-variant split, so every one of those fields failed at runtime.
+// countPoemsWhere 按单个条件统计诗词数量。
+// 它的存在是为了让这类计数和其他查询一样统一走 poemsTable()：
+// GraphQL resolver 早先用 db.Model(&Poem{}) 计数，会解析到 Poem.TableName()，
+// 也就是没有语言后缀的旧表名 "poems"；简繁分表之后该表已不存在，
+// 导致这些字段在运行时全部报错。
 func (r *Repository) countPoemsWhere(query string, args ...any) (int, error) {
 	var count int64
 	err := r.db.Table(r.poemsTable()).Where(query, args...).Count(&count).Error
 	return int(count), err
 }
 
-// GetStatistics returns overall statistics
+// GetStatistics 返回全库的整体统计数据。
 func (r *Repository) GetStatistics() (*Statistics, error) {
 	stats := &Statistics{}
 
-	// Total counts
+	// 各项总数
 	var err error
 	stats.TotalPoems, err = r.CountPoems()
 	if err != nil {
@@ -76,7 +75,7 @@ func (r *Repository) GetStatistics() (*Statistics, error) {
 	}
 	stats.TotalDynasties = int(count)
 
-	// Poems by dynasty - use raw SQL with dynamic table names
+	// 按朝代统计作品数。表名是动态的，故手写 SQL 片段
 	dynastyTable := r.dynastiesTable()
 	poemTable := r.poemsTable()
 
@@ -102,7 +101,7 @@ func (r *Repository) GetStatistics() (*Statistics, error) {
 		})
 	}
 
-	// Poems by type
+	// 按体裁统计作品数
 	typeTable := r.poetryTypesTable()
 
 	var typeStats []struct {
@@ -130,25 +129,25 @@ func (r *Repository) GetStatistics() (*Statistics, error) {
 	return stats, nil
 }
 
-// ListAuthorsWithFilter returns a paginated list of authors with optional dynasty filter
+// ListAuthorsWithFilter 分页查询作者列表，可按朝代过滤。
 func (r *Repository) ListAuthorsWithFilter(limit, offset int, dynastyID *int64) ([]AuthorWithStats, int, error) {
 	authorTable := r.authorsTable()
 	poemTable := r.poemsTable()
 
 	query := r.db.Table(authorTable)
 
-	// Apply dynasty filter
+	// 应用朝代过滤
 	if dynastyID != nil {
 		query = query.Where(authorTable+".dynasty_id = ?", *dynastyID)
 	}
 
-	// Get total count
+	// 先取满足条件的总数
 	var totalCount int64
 	if err := query.Count(&totalCount).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// Get authors with poem counts
+	// 再取作者及其作品数
 	var results []struct {
 		Author
 		PoemCount int `gorm:"column:poem_count"`
@@ -165,7 +164,7 @@ func (r *Repository) ListAuthorsWithFilter(limit, offset int, dynastyID *int64) 
 		return nil, 0, err
 	}
 
-	// Convert to AuthorWithStats
+	// 转换为对外的 AuthorWithStats
 	authors := make([]AuthorWithStats, len(results))
 	for i, r := range results {
 		authors[i] = AuthorWithStats{

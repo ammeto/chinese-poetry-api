@@ -1,8 +1,8 @@
 package database
 
-// Additional repository methods for REST API handlers
+// 本文件包含供 REST API handler 使用的补充查询方法。
 
-// GetAuthorsWithStats returns authors with their poem counts
+// GetAuthorsWithStats 返回作者列表及各自的作品数量。
 func (r *Repository) GetAuthorsWithStats(limit, offset int) ([]AuthorWithStats, error) {
 	authorTable := r.authorsTable()
 	poemTable := r.poemsTable()
@@ -10,11 +10,11 @@ func (r *Repository) GetAuthorsWithStats(limit, offset int) ([]AuthorWithStats, 
 
 	var authors []AuthorWithStats
 
-	// Pre-aggregate poem counts by author_id, then join authors for pagination.
+	// 先按 author_id 聚合作品数，再联表分页。
 	//
-	// id breaks ties on poem_count. Without it the order among the many authors
-	// sharing a count is unspecified, which lets LIMIT/OFFSET paging repeat and
-	// skip authors as the plan changes.
+	// 排序里加上 id 是为了在 poem_count 相同时打破并列：
+	// 否则大量作品数相同的作者之间顺序不确定，执行计划一变，
+	// LIMIT/OFFSET 分页就会出现重复和遗漏。
 	err := r.db.Table(authorTable).
 		Select(authorTable + ".*, COUNT(" + poemTable + ".id) AS poem_count").
 		Joins("LEFT JOIN " + poemTable + " ON " + authorTable + ".id = " + poemTable + ".author_id").
@@ -27,7 +27,7 @@ func (r *Repository) GetAuthorsWithStats(limit, offset int) ([]AuthorWithStats, 
 		return nil, err
 	}
 
-	// Load dynasty for each author
+	// 为每位作者补上所属朝代
 	dynastyIDs := make(map[int64]bool)
 	for _, a := range authors {
 		if a.DynastyID != nil {
@@ -60,7 +60,7 @@ func (r *Repository) GetAuthorsWithStats(limit, offset int) ([]AuthorWithStats, 
 	return authors, nil
 }
 
-// GetAuthorByID returns an author by ID
+// GetAuthorByID 按 ID 查询作者。
 func (r *Repository) GetAuthorByID(id int64) (*Author, error) {
 	var author Author
 	err := r.db.Table(r.authorsTable()).First(&author, id).Error
@@ -68,7 +68,7 @@ func (r *Repository) GetAuthorByID(id int64) (*Author, error) {
 		return nil, err
 	}
 
-	// Load dynasty
+	// 加载所属朝代
 	if author.DynastyID != nil {
 		var dynasty Dynasty
 		if err := r.db.Table(r.dynastiesTable()).First(&dynasty, *author.DynastyID).Error; err == nil {
@@ -79,7 +79,7 @@ func (r *Repository) GetAuthorByID(id int64) (*Author, error) {
 	return &author, nil
 }
 
-// GetAuthorByName returns an author by name
+// GetAuthorByName 按姓名查询作者。
 func (r *Repository) GetAuthorByName(name string) (*Author, error) {
 	var author Author
 	err := r.db.Table(r.authorsTable()).Where("name = ?", name).First(&author).Error
@@ -87,7 +87,7 @@ func (r *Repository) GetAuthorByName(name string) (*Author, error) {
 		return nil, err
 	}
 
-	// Load dynasty
+	// 加载所属朝代
 	if author.DynastyID != nil {
 		var dynasty Dynasty
 		if err := r.db.Table(r.dynastiesTable()).First(&dynasty, *author.DynastyID).Error; err == nil {
@@ -98,7 +98,7 @@ func (r *Repository) GetAuthorByName(name string) (*Author, error) {
 	return &author, nil
 }
 
-// GetPoemsByAuthor returns poems by a specific author
+// GetPoemsByAuthor 查询指定作者的诗词。
 func (r *Repository) GetPoemsByAuthor(authorID int64, limit, offset int) ([]Poem, error) {
 	var poems []Poem
 	err := r.db.Table(r.poemsTable()).
@@ -115,7 +115,7 @@ func (r *Repository) GetPoemsByAuthor(authorID int64, limit, offset int) ([]Poem
 	return poems, nil
 }
 
-// GetDynastiesWithStats returns dynasties with their poem and author counts
+// GetDynastiesWithStats 返回朝代列表及各自的作品数与作者数。
 func (r *Repository) GetDynastiesWithStats() ([]DynastyWithStats, error) {
 	dynastyTable := r.dynastiesTable()
 	poemTable := r.poemsTable()
@@ -123,7 +123,7 @@ func (r *Repository) GetDynastiesWithStats() ([]DynastyWithStats, error) {
 
 	var dynasties []DynastyWithStats
 
-	// Use subqueries instead of JOINs for better performance on large datasets
+	// 数据量大时子查询比 JOIN 更快，故此处用子查询统计
 	err := r.db.Table(dynastyTable).
 		Select(dynastyTable + ".*, " +
 			"(SELECT COUNT(*) FROM " + poemTable + " WHERE " + poemTable + ".dynasty_id = " + dynastyTable + ".id) as poem_count, " +
@@ -134,21 +134,21 @@ func (r *Repository) GetDynastiesWithStats() ([]DynastyWithStats, error) {
 	return dynasties, err
 }
 
-// GetDynastyByID returns a dynasty by ID
+// GetDynastyByID 按 ID 查询朝代。
 func (r *Repository) GetDynastyByID(id int64) (*Dynasty, error) {
 	var dynasty Dynasty
 	err := r.db.Table(r.dynastiesTable()).First(&dynasty, id).Error
 	return &dynasty, err
 }
 
-// GetDynastyByName returns a dynasty by name
+// GetDynastyByName 按名称查询朝代。
 func (r *Repository) GetDynastyByName(name string) (*Dynasty, error) {
 	var dynasty Dynasty
 	err := r.db.Table(r.dynastiesTable()).Where("name = ?", name).First(&dynasty).Error
 	return &dynasty, err
 }
 
-// GetPoemsByDynasty returns poems from a specific dynasty
+// GetPoemsByDynasty 查询指定朝代的诗词。
 func (r *Repository) GetPoemsByDynasty(dynastyID int64, limit, offset int) ([]Poem, error) {
 	var poems []Poem
 	err := r.db.Table(r.poemsTable()).
@@ -165,14 +165,14 @@ func (r *Repository) GetPoemsByDynasty(dynastyID int64, limit, offset int) ([]Po
 	return poems, nil
 }
 
-// GetPoetryTypesWithStats returns poetry types with their poem counts
+// GetPoetryTypesWithStats 返回体裁列表及各自的作品数量。
 func (r *Repository) GetPoetryTypesWithStats() ([]PoetryTypeWithStats, error) {
 	typeTable := r.poetryTypesTable()
 	poemTable := r.poemsTable()
 
 	var types []PoetryTypeWithStats
 
-	// Use subquery for better performance on large datasets
+	// 数据量大时子查询比 JOIN 更快
 	err := r.db.Table(typeTable).
 		Select(typeTable + ".*, (SELECT COUNT(*) FROM " + poemTable + " WHERE " + poemTable + ".type_id = " + typeTable + ".id) as poem_count").
 		Order("poem_count DESC, " + typeTable + ".id ASC").
@@ -181,14 +181,14 @@ func (r *Repository) GetPoetryTypesWithStats() ([]PoetryTypeWithStats, error) {
 	return types, err
 }
 
-// GetPoetryTypeByID returns a poetry type by ID
+// GetPoetryTypeByID 按 ID 查询体裁。
 func (r *Repository) GetPoetryTypeByID(id int64) (*PoetryType, error) {
 	var poetryType PoetryType
 	err := r.db.Table(r.poetryTypesTable()).First(&poetryType, id).Error
 	return &poetryType, err
 }
 
-// GetPoemsByType returns poems of a specific type
+// GetPoemsByType 查询指定体裁的诗词。
 func (r *Repository) GetPoemsByType(typeID int64, limit, offset int) ([]Poem, error) {
 	var poems []Poem
 	err := r.db.Table(r.poemsTable()).

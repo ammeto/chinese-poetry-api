@@ -12,24 +12,23 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/logger"
 )
 
-// Write operations for data processing
+// 本文件包含数据导入阶段使用的写操作。
 
-// GetOrCreateDynasty gets or creates a dynasty by name in a thread-safe manner
-// Uses ON CONFLICT to handle concurrent inserts gracefully
+// GetOrCreateDynasty 按名称查询或创建朝代，可安全并发调用。
+// 借助 ON CONFLICT 来化解并发插入冲突。
 func (r *Repository) GetOrCreateDynasty(name string) (int64, error) {
 	dynasty := Dynasty{Name: name}
 
-	// Try to create the dynasty with ON CONFLICT DO NOTHING
+	// 以 ON CONFLICT DO NOTHING 的方式尝试插入
 	err := r.db.Table(r.dynastiesTable()).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
-		DoNothing: true, // Ignore if already exists
+		DoNothing: true, // 已存在则忽略
 	}).Create(&dynasty).Error
 	if err != nil {
 		return 0, err
 	}
 
-	// If dynasty.ID is 0, it means the insert was skipped (already exists)
-	// We need to fetch the existing dynasty
+	// ID 为 0 说明插入被跳过（记录已存在），需要回查已有记录
 	if dynasty.ID == 0 {
 		err = r.db.Table(r.dynastiesTable()).Where("name = ?", name).First(&dynasty).Error
 		if err != nil {
@@ -40,28 +39,26 @@ func (r *Repository) GetOrCreateDynasty(name string) (int64, error) {
 	return dynasty.ID, nil
 }
 
-// GetOrCreateAuthor gets or creates an author in a thread-safe manner
-// Uses Name as unique key and ON CONFLICT to handle concurrent inserts
-// Note: Author's dynasty_id is set on first creation and not updated
-// This is because some authors appear in multiple dynasty datasets
+// GetOrCreateAuthor 查询或创建作者，可安全并发调用。
+// 以 name 为唯一键，并借助 ON CONFLICT 化解并发插入冲突。
+// 注意：dynasty_id 只在首次创建时写入，之后不再更新，
+// 因为同一位作者可能出现在多个朝代的数据集中。
 func (r *Repository) GetOrCreateAuthor(name string, dynastyID int64) (int64, error) {
 	author := Author{
 		Name:      name,
 		DynastyID: &dynastyID,
 	}
 
-	// Try to create the author with ON CONFLICT DO NOTHING
-	// This handles concurrent inserts gracefully
+	// 以 ON CONFLICT DO NOTHING 的方式尝试插入
 	err := r.db.Table(r.authorsTable()).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}},
-		DoNothing: true, // Ignore if already exists
+		DoNothing: true, // 已存在则忽略
 	}).Create(&author).Error
 	if err != nil {
 		return 0, err
 	}
 
-	// If author.ID is 0, it means the insert was skipped (already exists)
-	// We need to fetch the existing author
+	// ID 为 0 说明插入被跳过（记录已存在），需要回查已有记录
 	if author.ID == 0 {
 		err = r.db.Table(r.authorsTable()).Where("name = ?", name).First(&author).Error
 		if err != nil {
@@ -72,7 +69,7 @@ func (r *Repository) GetOrCreateAuthor(name string, dynastyID int64) (int64, err
 	return author.ID, nil
 }
 
-// GetPoetryTypeID gets the ID of a poetry type by name
+// GetPoetryTypeID 按名称查询体裁 ID。
 func (r *Repository) GetPoetryTypeID(name string) (int64, error) {
 	var poetryType PoetryType
 	err := r.db.Table(r.poetryTypesTable()).Where("name = ?", name).First(&poetryType).Error
@@ -82,9 +79,8 @@ func (r *Repository) GetPoetryTypeID(name string) (int64, error) {
 	return poetryType.ID, nil
 }
 
-// GetPoetryTypeIDs gets IDs for multiple poetry types by name in a single query
-// Returns IDs in the same order as the input names
-// Returns error if any of the requested types are not found
+// GetPoetryTypeIDs 用一次查询批量获取多个体裁的 ID，
+// 返回顺序与传入的名称一致；任一名称查不到时返回错误。
 func (r *Repository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 	if len(names) == 0 {
 		return []int64{}, nil
@@ -98,18 +94,17 @@ func (r *Repository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 		return nil, err
 	}
 
-	// Note: the row count is deliberately not compared against len(names).
-	// Repeated names (?type=五言绝句&type=五言绝句) collapse to one row in the
-	// IN clause, so such a comparison rejects a perfectly valid request. The
-	// per-name lookup below already reports any name that is genuinely missing.
+	// 注意：这里刻意不去比较返回行数与 len(names)。
+	// 重复的名称（如 ?type=五言绝句&type=五言绝句）在 IN 子句中会合并成一行，
+	// 若按行数比较会误拒完全合法的请求。下面逐名查表时已能识别真正不存在的名称。
 
-	// Create a map for O(1) lookup
+	// 建映射表以便 O(1) 查找
 	typeMap := make(map[string]int64, len(poetryTypes))
 	for _, pt := range poetryTypes {
 		typeMap[pt.Name] = pt.ID
 	}
 
-	// Return IDs in the same order as input names
+	// 按输入名称的顺序返回 ID
 	ids := make([]int64, len(names))
 	for i, name := range names {
 		id, ok := typeMap[name]
@@ -122,50 +117,49 @@ func (r *Repository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 	return ids, nil
 }
 
-// InsertPoem inserts a poem into the database
+// InsertPoem 插入单首诗词。
 func (r *Repository) InsertPoem(poem *Poem) error {
 	return r.db.Table(r.poemsTable()).Create(poem).Error
 }
 
-// BatchInsertPoems inserts multiple poems in batches for better performance
-// Handles duplicate IDs by skipping them (ON CONFLICT DO NOTHING)
+// BatchInsertPoems 分批插入诗词以提升性能，重复记录会被跳过。
 func (r *Repository) BatchInsertPoems(poems []*Poem, batchSize int) error {
 	if len(poems) == 0 {
 		return nil
 	}
 
 	if batchSize <= 0 {
-		batchSize = 100 // Default batch size
+		batchSize = 100 // 默认批量大小
 	}
 
-	// Use GORM's CreateInBatches with OnConflict to handle duplicates
-	// Skip duplicates based on composite unique index (title, content_hash)
+	// 用 CreateInBatches 配合 OnConflict 处理重复，
+	// 依据 (title, content_hash) 复合唯一索引跳过重复记录
 	return r.db.Table(r.poemsTable()).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "title"}, {Name: "content_hash"}},
-		DoNothing: true, // Skip duplicates
+		DoNothing: true, // 跳过重复记录
 	}).CreateInBatches(poems, batchSize).Error
 }
 
-// BatchInsertPoemsWithTransaction inserts poems in large transactions for maximum performance
-// This reduces fsync overhead by grouping multiple batches into one transaction
-// transactionSize: number of poems per transaction (e.g., 10000)
-// batchSize: number of poems per insert statement (e.g., 1000)
-// progress: progress container for displaying transaction progress
+// BatchInsertPoemsWithTransaction 用大事务批量写入诗词以获得最佳性能，
+// 把多个批次合并进同一个事务可显著降低 fsync 开销。
+// transactionSize：每个事务写入的诗词数（如 10000）
+// batchSize：单条 INSERT 语句写入的诗词数（如 1000）
+// progress：用于展示写入进度的进度条容器
 func (r *Repository) BatchInsertPoemsWithTransaction(poems []*Poem, transactionSize, batchSize int, progress *mpb.Progress) error {
 	if len(poems) == 0 {
 		return nil
 	}
 
 	if transactionSize <= 0 {
-		transactionSize = 20000 // Default: 20k poems per transaction
+		transactionSize = 20000 // 默认每个事务 2 万首
 	}
 	if batchSize <= 0 {
-		batchSize = 1000 // Default: 1000 poems per insert
+		batchSize = 1000 // 默认每条 INSERT 一千首
 	}
 
 	totalTransactions := (len(poems) + transactionSize - 1) / transactionSize
 
-	// Create progress bar for poems (not transactions) for smoother updates
+	// 进度条按诗词数而非事务数计量，刷新更平滑
 	var poemBar *mpb.Bar
 	if progress != nil {
 		poemBar = progress.AddBar(int64(len(poems)),
@@ -187,19 +181,18 @@ func (r *Repository) BatchInsertPoemsWithTransaction(poems []*Poem, transactionS
 		zap.Int("batch_size", batchSize),
 	)
 
-	// Process poems in large transaction chunks
+	// 按事务粒度切分并逐块写入
 	for i := 0; i < len(poems); i += transactionSize {
 		end := min(i+transactionSize, len(poems))
 		transactionChunk := poems[i:end]
 
-		// Execute one large transaction with manual batching for progress updates
+		// 单个大事务内手动分批，以便刷新进度条
 		err := r.db.Transaction(func(tx *gorm.DB) error {
-			// Manually batch insert within transaction to update progress bar
 			for j := 0; j < len(transactionChunk); j += batchSize {
 				batchEnd := min(j+batchSize, len(transactionChunk))
 				batch := transactionChunk[j:batchEnd]
 
-				// Insert this batch with deduplication
+				// 写入当前批次，重复记录自动跳过
 				err := tx.Table(r.poemsTable()).Clauses(clause.OnConflict{
 					Columns:   []clause.Column{{Name: "title"}, {Name: "content_hash"}},
 					DoNothing: true,
@@ -208,7 +201,7 @@ func (r *Repository) BatchInsertPoemsWithTransaction(poems []*Poem, transactionS
 					return err
 				}
 
-				// Update progress bar after each batch
+				// 每批写完刷新一次进度
 				if poemBar != nil {
 					poemBar.IncrBy(len(batch))
 				}
@@ -225,7 +218,7 @@ func (r *Repository) BatchInsertPoemsWithTransaction(poems []*Poem, transactionS
 	return nil
 }
 
-// UpsertPoem inserts or updates a poem (for handling duplicates)
+// UpsertPoem 插入诗词，若已存在则更新（用于处理重复数据）。
 func (r *Repository) UpsertPoem(poem *Poem) error {
 	return r.db.Table(r.poemsTable()).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},

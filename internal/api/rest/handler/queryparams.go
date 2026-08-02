@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Query parameter names accepted across the REST API.
+// REST API 中可用的查询参数名。
 const (
 	queryLang      = "lang"
 	queryPage      = "page"
@@ -22,19 +22,17 @@ const (
 	queryDynastyID = "dynasty_id"
 	queryDynasty   = "dynasty"
 
-	// queryType names the poetry type filter on /poems and /poems/random, and
-	// the search mode on /poems/search - two unrelated meanings, one spelling.
+	// queryType 在 /poems 与 /poems/random 上表示体裁过滤，
+	// 在 /poems/search 上表示搜索模式——同一个名字，两种互不相干的含义。
 	queryType = "type"
 )
 
-// checkQueryParams responds 400 and returns false if the request carries any
-// query parameter outside allowed.
+// checkQueryParams 在请求带有 allowed 之外的查询参数时返回 400 并返回 false。
 //
-// Gin drops unrecognised query params silently, so before this check a
-// misspelled filter (dynastyId, the GraphQL spelling, instead of dynasty_id)
-// produced a perfectly normal 200 over the unfiltered corpus - the client had
-// no way to tell the filter had been ignored. Every endpoint therefore declares
-// the keys it actually reads.
+// Gin 会静默忽略无法识别的查询参数，因此在加上这道校验之前，
+// 写错的过滤参数（如误用 GraphQL 的 dynastyId 而非 dynasty_id）
+// 会在完全未过滤的全量数据上返回一个正常的 200，客户端无从察觉过滤被忽略了。
+// 为此每个接口都显式声明自己真正会读取的参数名。
 func checkQueryParams(c *gin.Context, allowed ...string) bool {
 	var unknown []string
 	for key := range c.Request.URL.Query() {
@@ -46,7 +44,7 @@ func checkQueryParams(c *gin.Context, allowed ...string) bool {
 		return true
 	}
 
-	// Map iteration order is random; sort so the message is reproducible.
+	// map 遍历顺序随机，排序后错误信息才稳定可复现
 	slices.Sort(unknown)
 	sortedAllowed := slices.Clone(allowed)
 	slices.Sort(sortedAllowed)
@@ -56,11 +54,8 @@ func checkQueryParams(c *gin.Context, allowed ...string) bool {
 	return false
 }
 
-// parseIntQuery reads key as an integer within [min, max], returning def when
-// the parameter is absent. It responds 400 and returns false for a value that
-// is not an integer or falls outside the range, rather than silently coercing
-// it - a clamped page_size=1000 or a discarded page=abc used to look like a
-// successful request.
+// parseIntQuery 把 key 解析为落在 [minValue, maxValue] 区间内的整数，参数缺省时返回 def。
+// 取值非整数或越界时返回 400 并返回 false，而非悄悄纠正：只返回被截断的内容
 func parseIntQuery(c *gin.Context, key string, def, minValue, maxValue int) (int, bool) {
 	raw := c.Query(key)
 	if raw == "" {
@@ -80,9 +75,8 @@ func parseIntQuery(c *gin.Context, key string, def, minValue, maxValue int) (int
 	return value, true
 }
 
-// parseInt64Query reads key as an int64 id, returning nil when absent. It
-// responds 400 and returns false for a non-numeric value; previously such a
-// value was discarded, silently widening the query to the whole corpus.
+// parseInt64Query 把 key 解析为 int64 类型的 ID，参数缺省时返回 nil。
+// 取值非数字时返回 400 并返回 false；避免查询范围在无声无息中扩大到全量数据。
 func parseInt64Query(c *gin.Context, key string) (*int64, bool) {
 	raw := c.Query(key)
 	if raw == "" {

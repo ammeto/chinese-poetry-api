@@ -22,7 +22,7 @@ var (
 )
 
 func main() {
-	// Initialize logger (always debug mode for processor)
+	// 数据处理程序始终以 debug 模式记录日志
 	logger.Init(true)
 	defer logger.Sync()
 
@@ -43,15 +43,16 @@ func main() {
 	}
 }
 
+// run 是 processor 命令的主流程：加载数据、导入数据库、输出统计。
 func run(cmd *cobra.Command, args []string) error {
-	// Determine config path
+	// 确定配置文件路径
 	if configPath == "" {
 		configPath = filepath.Join(inputDir, "loader", "datas.json")
 	}
 
 	logger.Info("Loading poetry data", zap.String("config", configPath))
 
-	// Load all poetry data
+	// 加载全部诗词数据
 	jsonLoader, err := loader.NewJSONLoader(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to create loader: %w", err)
@@ -64,7 +65,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 	logger.Info("Loaded poems from JSON files", zap.Int("count", len(poems)))
 
-	// Process unified database with both language variants
+	// 生成同时包含简繁两套表的统一数据库
 	logger.Info("Processing unified database")
 	if err := processUnifiedDatabase(outputDB, poems, workers); err != nil {
 		return fmt.Errorf("failed to process database: %w", err)
@@ -72,7 +73,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 	logger.Info("Processing complete", zap.String("database", outputDB))
 
-	// Print statistics
+	// 输出统计信息
 	if err := printStatistics(outputDB); err != nil {
 		logger.Warn("Failed to print statistics", zap.Error(err))
 	}
@@ -80,26 +81,27 @@ func run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// processUnifiedDatabase 重建数据库，并依次导入简体与繁体两套数据。
 func processUnifiedDatabase(dbPath string, poems []loader.PoemWithMeta, workers int) error {
-	// Remove existing database
+	// 删除已存在的数据库文件
 	if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove existing database: %w", err)
 	}
 
-	// Open database with single connection (safe for data processing)
+	// 数据处理场景下单连接更安全
 	db, err := database.Open(dbPath, 1, 1)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer func() { _ = db.Close() }()
 
-	// Run migrations - creates tables for both language variants
+	// 执行迁移，创建简繁两套表
 	logger.Info("Creating database schema (simplified + traditional tables)")
 	if err := db.Migrate(); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
-	// Process simplified Chinese version
+	// 处理简体版本
 	logger.Info("Processing language variant", zap.String("lang", "zh-Hans"))
 	repoSimp := database.NewRepositoryWithLang(db, database.LangHans)
 	procSimp := processor.NewProcessor(repoSimp, workers, false)
@@ -107,7 +109,7 @@ func processUnifiedDatabase(dbPath string, poems []loader.PoemWithMeta, workers 
 		return fmt.Errorf("failed to process simplified poems: %w", err)
 	}
 
-	// Process traditional Chinese version
+	// 处理繁体版本
 	logger.Info("Processing language variant", zap.String("lang", "zh-Hant"))
 	repoTrad := database.NewRepositoryWithLang(db, database.LangHant)
 	procTrad := processor.NewProcessor(repoTrad, workers, true)
@@ -115,7 +117,7 @@ func processUnifiedDatabase(dbPath string, poems []loader.PoemWithMeta, workers 
 		return fmt.Errorf("failed to process traditional poems: %w", err)
 	}
 
-	// Optimize database
+	// 优化数据库文件
 	logger.Info("Optimizing database")
 	if err := db.Exec("VACUUM").Error; err != nil {
 		logger.Warn("Failed to vacuum database", zap.Error(err))
@@ -128,8 +130,9 @@ func processUnifiedDatabase(dbPath string, poems []loader.PoemWithMeta, workers 
 	return nil
 }
 
+// printStatistics 打印各语言变体下的数据量统计。
 func printStatistics(dbPath string) error {
-	// Use single connection for statistics (read-only)
+	// 统计为只读操作，单连接即可
 	db, err := database.Open(dbPath, 1, 1)
 	if err != nil {
 		return err

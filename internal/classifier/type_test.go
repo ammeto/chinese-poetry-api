@@ -416,7 +416,7 @@ func TestRemovePunctuation(t *testing.T) {
 		{
 			name:  "remove English punctuation",
 			input: "Hello, World!",
-			want:  "Hello World", // Space is not removed
+			want:  "Hello World", // 空格不在移除之列
 		},
 		{
 			name:  "no punctuation",
@@ -446,7 +446,7 @@ func TestClassifyPoetryTypeWithDataset(t *testing.T) {
 		datasetKey string
 		want       PoetryTypeInfo
 	}{
-		// Dataset-based direct mapping
+		// 按数据集直接映射
 		{
 			name:       "诗经 - dataset mapping",
 			paragraphs: []string{"关关雎鸠，在河之洲。", "窈窕淑女，君子好逑。"},
@@ -497,7 +497,7 @@ func TestClassifyPoetryTypeWithDataset(t *testing.T) {
 				Category: "曲",
 			},
 		},
-		// Fallback to structure-based classification
+		// 回退到按结构判定
 		{
 			name:       "五言绝句 - no dataset key",
 			paragraphs: []string{"春眠不觉晓", "处处闻啼鸟", "夜来风雨声", "花落知多少"},
@@ -532,7 +532,7 @@ func TestClassifyPoetryTypeWithDataset(t *testing.T) {
 				Category: "宋词",
 			},
 		},
-		// Edge case: dataset mapping should override structure analysis
+		// 边界情况：数据集映射的优先级高于结构分析
 		{
 			name:       "诗经 with regular structure - dataset takes priority",
 			paragraphs: []string{"关关雎鸠", "在河之洲", "窈窕淑女", "君子好逑"},

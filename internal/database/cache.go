@@ -4,11 +4,11 @@ import (
 	"sync"
 )
 
-// CachedRepository wraps Repository with caching for frequently accessed data
+// CachedRepository 在 Repository 之上叠加一层内存缓存，
+// 用于导入阶段高频访问的朝代、体裁与作者 ID。
 type CachedRepository struct {
 	*Repository
 
-	// Caches for frequently accessed data
 	dynastyCache   map[string]int64
 	dynastyCacheMu sync.RWMutex
 
@@ -19,7 +19,7 @@ type CachedRepository struct {
 	authorCacheMu sync.RWMutex
 }
 
-// NewCachedRepository creates a new cached repository
+// NewCachedRepository 创建带缓存的仓储。
 func NewCachedRepository(repo *Repository) *CachedRepository {
 	return &CachedRepository{
 		Repository:   repo,
@@ -29,9 +29,9 @@ func NewCachedRepository(repo *Repository) *CachedRepository {
 	}
 }
 
-// GetOrCreateDynasty gets or creates a dynasty with caching
+// GetOrCreateDynasty 查询或创建朝代，结果带缓存。
 func (r *CachedRepository) GetOrCreateDynasty(name string) (int64, error) {
-	// Try to get from cache first
+	// 先查缓存
 	r.dynastyCacheMu.RLock()
 	if id, ok := r.dynastyCache[name]; ok {
 		r.dynastyCacheMu.RUnlock()
@@ -39,13 +39,13 @@ func (r *CachedRepository) GetOrCreateDynasty(name string) (int64, error) {
 	}
 	r.dynastyCacheMu.RUnlock()
 
-	// Not in cache, get from database
+	// 未命中则回落到数据库
 	id, err := r.Repository.GetOrCreateDynasty(name)
 	if err != nil {
 		return 0, err
 	}
 
-	// Store in cache
+	// 结果写入缓存
 	r.dynastyCacheMu.Lock()
 	r.dynastyCache[name] = id
 	r.dynastyCacheMu.Unlock()
@@ -53,9 +53,9 @@ func (r *CachedRepository) GetOrCreateDynasty(name string) (int64, error) {
 	return id, nil
 }
 
-// GetPoetryTypeID gets the ID of a poetry type with caching
+// GetPoetryTypeID 查询体裁 ID，结果带缓存。
 func (r *CachedRepository) GetPoetryTypeID(name string) (int64, error) {
-	// Try to get from cache first
+	// 先查缓存
 	r.typeCacheMu.RLock()
 	if id, ok := r.typeCache[name]; ok {
 		r.typeCacheMu.RUnlock()
@@ -63,13 +63,13 @@ func (r *CachedRepository) GetPoetryTypeID(name string) (int64, error) {
 	}
 	r.typeCacheMu.RUnlock()
 
-	// Not in cache, get from database
+	// 未命中则回落到数据库
 	id, err := r.Repository.GetPoetryTypeID(name)
 	if err != nil {
 		return 0, err
 	}
 
-	// Store in cache
+	// 结果写入缓存
 	r.typeCacheMu.Lock()
 	r.typeCache[name] = id
 	r.typeCacheMu.Unlock()
@@ -77,8 +77,7 @@ func (r *CachedRepository) GetPoetryTypeID(name string) (int64, error) {
 	return id, nil
 }
 
-// GetPoetryTypeIDs gets IDs for multiple poetry types with caching
-// Checks cache first, then fetches missing types from database
+// GetPoetryTypeIDs 批量查询体裁 ID：先查缓存，仅对未命中的部分查库。
 func (r *CachedRepository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 	if len(names) == 0 {
 		return []int64{}, nil
@@ -88,7 +87,7 @@ func (r *CachedRepository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 	missingNames := []string{}
 	missingIndices := []int{}
 
-	// Check cache for each name
+	// 逐个查缓存，记录未命中的名称及其下标
 	r.typeCacheMu.RLock()
 	for i, name := range names {
 		if id, ok := r.typeCache[name]; ok {
@@ -100,18 +99,18 @@ func (r *CachedRepository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 	}
 	r.typeCacheMu.RUnlock()
 
-	// If all found in cache, return immediately
+	// 全部命中则直接返回
 	if len(missingNames) == 0 {
 		return ids, nil
 	}
 
-	// Fetch missing types from database
+	// 未命中的部分查库补齐
 	missingIDs, err := r.Repository.GetPoetryTypeIDs(missingNames)
 	if err != nil {
 		return nil, err
 	}
 
-	// Update cache and fill in missing IDs
+	// 回填结果并更新缓存
 	r.typeCacheMu.Lock()
 	for i, name := range missingNames {
 		id := missingIDs[i]
@@ -123,9 +122,9 @@ func (r *CachedRepository) GetPoetryTypeIDs(names []string) ([]int64, error) {
 	return ids, nil
 }
 
-// GetOrCreateAuthor gets or creates an author with caching
+// GetOrCreateAuthor 查询或创建作者，结果带缓存。
 func (r *CachedRepository) GetOrCreateAuthor(name string, dynastyID int64) (int64, error) {
-	// Try to get from cache first (use name as key since it's unique)
+	// 先查缓存，作者名唯一，直接用作 key
 	r.authorCacheMu.RLock()
 	if id, ok := r.authorCache[name]; ok {
 		r.authorCacheMu.RUnlock()
@@ -133,13 +132,13 @@ func (r *CachedRepository) GetOrCreateAuthor(name string, dynastyID int64) (int6
 	}
 	r.authorCacheMu.RUnlock()
 
-	// Not in cache, get from database
+	// 未命中则回落到数据库
 	id, err := r.Repository.GetOrCreateAuthor(name, dynastyID)
 	if err != nil {
 		return 0, err
 	}
 
-	// Store in cache
+	// 结果写入缓存
 	r.authorCacheMu.Lock()
 	r.authorCache[name] = id
 	r.authorCacheMu.Unlock()
@@ -147,7 +146,7 @@ func (r *CachedRepository) GetOrCreateAuthor(name string, dynastyID int64) (int6
 	return id, nil
 }
 
-// ClearCache clears all caches
+// ClearCache 清空全部缓存。
 func (r *CachedRepository) ClearCache() {
 	r.dynastyCacheMu.Lock()
 	r.dynastyCache = make(map[string]int64)
@@ -162,7 +161,7 @@ func (r *CachedRepository) ClearCache() {
 	r.authorCacheMu.Unlock()
 }
 
-// GetCacheStats returns statistics about cache usage
+// GetCacheStats 返回各类缓存当前的条目数量。
 func (r *CachedRepository) GetCacheStats() map[string]int {
 	r.dynastyCacheMu.RLock()
 	dynastyCount := len(r.dynastyCache)

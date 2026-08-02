@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// setupTestDB creates an in-memory database for testing
+// setupTestDB 创建测试用的内存数据库。
 func setupGetPoetryTypeIDsTestDB(t *testing.T) (*DB, *Repository) {
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -26,7 +26,7 @@ func setupGetPoetryTypeIDsTestDB(t *testing.T) (*DB, *Repository) {
 func TestGetPoetryTypeIDs(t *testing.T) {
 	_, repo := setupGetPoetryTypeIDsTestDB(t)
 
-	// Create test poetry types with ON CONFLICT to handle unique constraint
+	// 借助 ON CONFLICT 写入测试用的体裁，规避唯一约束冲突
 	types := []string{"五言绝句", "七言绝句", "五言律诗", "七言律诗"}
 	for _, typeName := range types {
 		poetryType := PoetryType{Name: typeName}
@@ -77,8 +77,8 @@ func TestGetPoetryTypeIDs(t *testing.T) {
 			expectError: true,
 		},
 		{
-			// A repeated name collapses to one row in the IN clause. Comparing
-			// the row count against len(names) used to reject this, surfacing
+			// 重复的名称在 IN 子句中会合并成一行。早先拿返回行数与 len(names)
+			// 比较会因此误拒该请求，表现为
 			// as a 404 for ?type=五言绝句&type=五言绝句.
 			name:          "repeated name",
 			inputNames:    []string{"五言绝句", "五言绝句"},
@@ -104,10 +104,10 @@ func TestGetPoetryTypeIDs(t *testing.T) {
 				require.NoError(t, err)
 				assert.Len(t, ids, tt.expectedCount)
 
-				// Verify IDs are returned in the same order as input
+				// 返回的 ID 顺序应与输入名称一致
 				if len(tt.inputNames) > 0 {
 					for i, name := range tt.inputNames {
-						// Verify we can look up the type by ID and get the same name
+						// 反查该 ID 应能得到相同的名称
 						var poetryType PoetryType
 						err := repo.db.Table(repo.poetryTypesTable()).First(&poetryType, ids[i]).Error
 						require.NoError(t, err)
@@ -123,7 +123,7 @@ func TestGetPoetryTypeIDsWithCache(t *testing.T) {
 	db, repo := setupGetPoetryTypeIDsTestDB(t)
 	cachedRepo := NewCachedRepository(repo)
 
-	// Create test poetry types with ON CONFLICT to handle unique constraint
+	// 借助 ON CONFLICT 写入测试用的体裁，规避唯一约束冲突
 	types := []string{"五言绝句", "七言绝句", "五言律诗"}
 	for _, typeName := range types {
 		poetryType := PoetryType{Name: typeName}
@@ -133,17 +133,17 @@ func TestGetPoetryTypeIDsWithCache(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// First call - should populate cache
+	// 首次调用应填充缓存
 	ids1, err := cachedRepo.GetPoetryTypeIDs(types)
 	require.NoError(t, err)
 	assert.Len(t, ids1, 3)
 
-	// Second call - should use cache
+	// 第二次调用应命中缓存
 	ids2, err := cachedRepo.GetPoetryTypeIDs(types)
 	require.NoError(t, err)
 	assert.Equal(t, ids1, ids2)
 
-	// Partial cache hit
+	// 部分命中缓存
 	partialTypes := []string{"五言绝句", "七言绝句"} // These should be in cache
 	ids3, err := cachedRepo.GetPoetryTypeIDs(partialTypes)
 	require.NoError(t, err)
@@ -151,7 +151,7 @@ func TestGetPoetryTypeIDsWithCache(t *testing.T) {
 	assert.Equal(t, ids1[0], ids3[0])
 	assert.Equal(t, ids1[1], ids3[1])
 
-	// Verify cache stats
+	// 校验缓存统计
 	stats := cachedRepo.GetCacheStats()
 	assert.Equal(t, 3, stats["types"])
 }

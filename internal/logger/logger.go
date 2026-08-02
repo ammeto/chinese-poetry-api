@@ -1,4 +1,4 @@
-// Package logger provides a structured logging wrapper using zap.
+// Package logger 基于 zap 提供结构化日志的封装。
 package logger
 
 import (
@@ -10,14 +10,14 @@ import (
 )
 
 var (
-	// L is the global logger instance
+	// L 是全局日志实例
 	L    *zap.Logger
 	once sync.Once
 )
 
-// Init initializes the global logger.
-// If debug is true, uses development config with DEBUG level.
-// Otherwise uses production config with INFO level.
+// Init 初始化全局日志实例。
+// debug 为 true 时采用开发配置，日志级别为 DEBUG；
+// 否则采用生产配置，级别为 INFO。
 func Init(debug bool) {
 	once.Do(func() {
 		var err error
@@ -32,21 +32,20 @@ func Init(debug bool) {
 			L, err = config.Build()
 		}
 		if err != nil {
-			// Fallback to nop logger if initialization fails
+			// 初始化失败则退化为空实现，保证调用方不会 panic
 			L = zap.NewNop()
 		}
 	})
 }
 
-// Sync flushes any buffered log entries.
-// Should be called before the application exits.
+// Sync 刷新缓冲中的日志，应在程序退出前调用。
 func Sync() {
 	if L != nil {
 		_ = L.Sync()
 	}
 }
 
-// Default initializes a default logger if not already initialized.
+// Default 返回全局日志实例，尚未初始化时先按环境自动初始化。
 func Default() *zap.Logger {
 	if L == nil {
 		Init(os.Getenv("GIN_MODE") != "release")
@@ -54,32 +53,32 @@ func Default() *zap.Logger {
 	return L
 }
 
-// With creates a child logger with additional fields.
+// With 创建带附加字段的子 logger。
 func With(fields ...zap.Field) *zap.Logger {
 	return Default().With(fields...)
 }
 
-// Debug logs a debug message.
+// Debug 记录 debug 级别日志。
 func Debug(msg string, fields ...zap.Field) {
 	Default().Debug(msg, fields...)
 }
 
-// Info logs an info message.
+// Info 记录 info 级别日志。
 func Info(msg string, fields ...zap.Field) {
 	Default().Info(msg, fields...)
 }
 
-// Warn logs a warning message.
+// Warn 记录 warn 级别日志。
 func Warn(msg string, fields ...zap.Field) {
 	Default().Warn(msg, fields...)
 }
 
-// Error logs an error message.
+// Error 记录 error 级别日志。
 func Error(msg string, fields ...zap.Field) {
 	Default().Error(msg, fields...)
 }
 
-// Fatal logs a fatal message and exits.
+// Fatal 记录 fatal 级别日志并退出进程。
 func Fatal(msg string, fields ...zap.Field) {
 	Default().Fatal(msg, fields...)
 }

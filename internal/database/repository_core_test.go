@@ -12,7 +12,7 @@ func TestInsertPoem(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create dependencies
+	// 先写入依赖数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
@@ -27,7 +27,7 @@ func TestInsertPoem(t *testing.T) {
 	err := repo.InsertPoem(poem)
 	require.NoError(t, err)
 
-	// Verify it was inserted
+	// 确认已写入
 	count, _ := repo.CountPoems()
 	assert.Equal(t, 1, count)
 }
@@ -36,7 +36,7 @@ func TestGetPoemByID(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
@@ -69,7 +69,7 @@ func TestListPoems(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
@@ -118,7 +118,7 @@ func TestListPoemsWithFilter(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	tangID, _ := repo.GetOrCreateDynasty("唐")
 	songID, _ := repo.GetOrCreateDynasty("宋")
 	libaiID, _ := repo.GetOrCreateAuthor("李白", tangID)
@@ -168,7 +168,7 @@ func TestListAuthorPoems(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
@@ -202,19 +202,19 @@ func TestListAuthorsWithFilter(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	tangID, _ := repo.GetOrCreateDynasty("唐")
 	songID, _ := repo.GetOrCreateDynasty("宋")
 	libaiID, _ := repo.GetOrCreateAuthor("李白", tangID)
 	dumuID, _ := repo.GetOrCreateAuthor("杜牧", tangID)
 	sushiID, _ := repo.GetOrCreateAuthor("苏轼", songID)
 
-	// Create poems for authors
+	// 为各作者写入诗词
 	_ = repo.InsertPoem(&Poem{ID: 30, Title: "诗1", Content: datatypes.JSON([]byte(`["内容"]`)), AuthorID: &libaiID, DynastyID: &tangID})
 	_ = repo.InsertPoem(&Poem{ID: 31, Title: "诗2", Content: datatypes.JSON([]byte(`["内容"]`)), AuthorID: &dumuID, DynastyID: &tangID})
 	_ = repo.InsertPoem(&Poem{ID: 32, Title: "诗3", Content: datatypes.JSON([]byte(`["内容"]`)), AuthorID: &sushiID, DynastyID: &songID})
 
-	// Note: filter by dynasty test is commented out due to SQL ambiguity bug in ListAuthorsWithFilter
+	// 注：按朝代过滤的用例暂时注释掉，因为 ListAuthorsWithFilter 存在 SQL 字段歧义的问题
 	// t.Run("filter by dynasty", func(t *testing.T) {
 	// 	authors, count, err := repo.ListAuthorsWithFilter(10, 0, &tangID)
 	// 	require.NoError(t, err)
@@ -234,7 +234,7 @@ func TestGetStatistics(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	tangID, _ := repo.GetOrCreateDynasty("唐")
 	songID, _ := repo.GetOrCreateDynasty("宋")
 	libaiID, _ := repo.GetOrCreateAuthor("李白", tangID)
@@ -257,7 +257,7 @@ func TestSearchPoems(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 

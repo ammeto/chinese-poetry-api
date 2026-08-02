@@ -12,49 +12,45 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/classifier"
 )
 
-// DB wraps the gorm.DB connection
+// DB 是对 gorm.DB 连接的封装。
 type DB struct {
 	*gorm.DB
 }
 
-// Open opens a connection to the SQLite database using GORM
-// maxOpenConns: maximum number of open connections (0 = use default of 1 for safety)
-// maxIdleConns: maximum number of idle connections (0 = use default of 1)
+// Open 打开 SQLite 数据库连接。
+// maxOpenConns：最大连接数，传 0 则取保守默认值 1。
+// maxIdleConns：最大空闲连接数，传 0 则取默认值 1。
 func Open(path string, maxOpenConns, maxIdleConns int) (*DB, error) {
-	// Configure GORM
 	config := &gorm.Config{
-		Logger:  logger.Default.LogMode(logger.Silent), // Change to logger.Info for debugging
-		NowFunc: time.Now,
-		// Prepare statements for better performance
-		PrepareStmt: true,
+		Logger:      logger.Default.LogMode(logger.Silent), // 调试时可改为 logger.Info
+		NowFunc:     time.Now,
+		PrepareStmt: true, // 预编译语句以提升性能
 	}
 
-	// SQLite connection string with optimizations for concurrent writes
-	// _busy_timeout: wait up to 5 seconds if database is locked
-	// _journal_mode=WAL: Write-Ahead Logging for better concurrency
-	// _synchronous=NORMAL: balance between safety and performance
-	// cache=shared: allow multiple connections to share cache
-	// _cache_size=-64000: 64MB page cache (negative = KB, positive = pages)
-	// _temp_store=MEMORY: use memory for temporary tables and indices
+	// 针对并发写入优化的 SQLite 连接串：
+	// _busy_timeout=5000  数据库被锁时最多等待 5 秒
+	// _journal_mode=WAL   使用 WAL 日志以提升并发能力
+	// _synchronous=NORMAL 在安全性与性能之间取平衡
+	// cache=shared        多个连接共享缓存
+	// _cache_size=-64000  64MB 页缓存（负值单位为 KB，正值为页数）
+	// _temp_store=MEMORY  临时表与临时索引放在内存中
 	dsn := path + "?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&cache=shared&_cache_size=-64000&_temp_store=MEMORY"
 
-	// Open database with GORM SQLite driver
 	db, err := gorm.Open(sqlite.Open(dsn), config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Get underlying sql.DB for connection pool settings
+	// 取出底层 sql.DB 以配置连接池
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	// Set connection pool settings
-	// Default to 1 connection for safety (data processing)
-	// Can be increased for read-heavy API serving
+	// 默认只用 1 条连接，对数据导入这类写密集场景更安全；
+	// 以读为主的 API 服务可以调大。
 	if maxOpenConns <= 0 {
-		maxOpenConns = 1 // Safe default for write-heavy workloads
+		maxOpenConns = 1
 	}
 	if maxIdleConns <= 0 {
 		maxIdleConns = 1
@@ -64,7 +60,7 @@ func Open(path string, maxOpenConns, maxIdleConns int) (*DB, error) {
 	sqlDB.SetMaxIdleConns(maxIdleConns)
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
-	// Test connection
+	// 探活，确认连接可用
 	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
@@ -72,15 +68,14 @@ func Open(path string, maxOpenConns, maxIdleConns int) (*DB, error) {
 	return &DB{db}, nil
 }
 
-// NewDBFromGorm wraps an existing gorm.DB connection.
-// This is useful for testing with custom database configurations.
+// NewDBFromGorm 包装一个已有的 gorm.DB 连接，便于测试时注入自定义配置。
 func NewDBFromGorm(db *gorm.DB) *DB {
 	return &DB{db}
 }
 
-// Migrate creates all tables, indexes, and initial data for both language variants
+// Migrate 为简体、繁体两套表创建全部表结构、索引与初始数据。
 func (db *DB) Migrate() error {
-	// Create metadata table first
+	// 先建元数据表
 	if err := db.Exec(`CREATE TABLE IF NOT EXISTS metadata (
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL,
@@ -89,19 +84,19 @@ func (db *DB) Migrate() error {
 		return fmt.Errorf("failed to create metadata table: %w", err)
 	}
 
-	// Create tables for both language variants
+	// 简繁两套表分别建表
 	for _, lang := range []Lang{LangHans, LangHant} {
 		if err := db.migrateTablesForLang(lang); err != nil {
 			return fmt.Errorf("failed to migrate tables for %s: %w", lang, err)
 		}
 
-		// Insert initial data for this language variant
+		// 写入该语言变体的初始数据
 		if err := db.insertInitialDataForLang(lang); err != nil {
 			return fmt.Errorf("failed to insert initial data for %s: %w", lang, err)
 		}
 	}
 
-	// Update schema version
+	// 更新 schema 版本号
 	if err := db.Exec(
 		`INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, ?)`,
 		"schema_version",
@@ -114,14 +109,14 @@ func (db *DB) Migrate() error {
 	return nil
 }
 
-// migrateTablesForLang creates all tables for a specific language variant
+// migrateTablesForLang 为指定语言变体创建全部表与索引。
 func (db *DB) migrateTablesForLang(lang Lang) error {
 	dynastyTable := dynastiesTable(lang)
 	authorTable := authorsTable(lang)
 	poetryTypeTable := poetryTypesTable(lang)
 	poemTable := poemsTable(lang)
 
-	// Create dynasties table
+	// 朝代表
 	dynastySQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
@@ -134,7 +129,7 @@ func (db *DB) migrateTablesForLang(lang Lang) error {
 		return fmt.Errorf("failed to create %s: %w", dynastyTable, err)
 	}
 
-	// Create authors table
+	// 作者表
 	authorSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL UNIQUE,
@@ -146,10 +141,10 @@ func (db *DB) migrateTablesForLang(lang Lang) error {
 	if err := db.Exec(authorSQL).Error; err != nil {
 		return fmt.Errorf("failed to create %s: %w", authorTable, err)
 	}
-	// Create index on dynasty_id
+	// dynasty_id 索引
 	db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_dynasty ON %s(dynasty_id)", authorTable, authorTable))
 
-	// Create poetry_types table
+	// 诗词体裁表
 	poetryTypeSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		id INTEGER PRIMARY KEY,
 		name TEXT NOT NULL UNIQUE,
@@ -163,7 +158,7 @@ func (db *DB) migrateTablesForLang(lang Lang) error {
 		return fmt.Errorf("failed to create %s: %w", poetryTypeTable, err)
 	}
 
-	// Create poems table
+	// 诗词表
 	poemSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		id INTEGER PRIMARY KEY,
 		type_id INTEGER,
@@ -181,13 +176,13 @@ func (db *DB) migrateTablesForLang(lang Lang) error {
 		return fmt.Errorf("failed to create %s: %w", poemTable, err)
 	}
 
-	// Create indexes for poems
+	// 诗词表索引
 	db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_type ON %s(type_id)", poemTable, poemTable))
 	db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_title ON %s(title)", poemTable, poemTable))
 	db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_author ON %s(author_id)", poemTable, poemTable))
 	db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_dynasty ON %s(dynasty_id)", poemTable, poemTable))
 	db.Exec(fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS idx_%s_unique ON %s(title, content_hash)", poemTable, poemTable))
-	// Composite index for efficient multi-type random selection (type_id IN ... with id range lookups)
+	// 复合索引，用于多体裁随机取词（type_id IN ... 叠加 id 范围查找）
 	db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_type_id ON %s(type_id, id)", poemTable, poemTable))
 
 	if err := db.migrateFtsForLang(lang); err != nil {
@@ -197,31 +192,26 @@ func (db *DB) migrateTablesForLang(lang Lang) error {
 	return nil
 }
 
-// migrateFtsForLang creates the FTS5 virtual table (and sync triggers) that backs
-// full-text search for a poems table, then backfills it if it was just created.
+// migrateFtsForLang 创建支撑全文检索的 FTS5 虚拟表及其同步触发器，
+// 若表是本次新建的，还会做一次数据回填。
 //
-// The table is a self-contained (not external-content) FTS5 index: content_text is
-// a derived value (the poem's paragraphs flattened out of poems.content, which is a
-// JSON array), not a literal column on the poems table, and FTS5's external-content
-// mode requires reading column values back from a same-named column on the linked
-// table. Duplicating the indexed text costs some extra disk space, but keeps the
-// index simple and correct. Triggers below keep it in sync with every
-// INSERT/UPDATE/DELETE on the poems table, including the ON CONFLICT upserts used
-// by the loader.
+// 这里用的是自包含（而非 external-content）的 FTS5 索引：content_text 是派生值，
+// 由以 JSON 数组形式存放的 poems.content 拍平而来，并非 poems 表上真实存在的列，
+// 而 FTS5 的 external-content 模式要求能从关联表的同名列读回取值。
+// 复制一份被索引的文本会多占些磁盘空间，但换来索引实现的简单与正确。
+// 下面的触发器负责在 poems 表每次 INSERT/UPDATE/DELETE（含 loader 使用的
+// ON CONFLICT upsert）时同步索引。
 //
-// The trigram tokenizer is used instead of the default unicode61 tokenizer because
-// Chinese text has no whitespace word boundaries, so the standard tokenizer can't
-// segment it meaningfully. Trigram indexing lets `col LIKE '%...%'` (arbitrary
-// substring queries, including single/double-character CJK terms) be accelerated by
-// the FTS index while keeping the exact same substring-match semantics the API
-// already exposes via SearchPoems.
+// 分词器选用 trigram 而非默认的 unicode61：中文没有空格作词边界，
+// 标准分词器无法有效切分。trigram 索引让 `col LIKE '%...%'` 这类任意子串查询
+// 也能走 FTS 索引加速（含单字、双字中文词），同时完全保持 SearchPoems
+// 对外暴露的子串匹配语义。
 func (db *DB) migrateFtsForLang(lang Lang) error {
 	poemTable := poemsTable(lang)
 	ftsTable := poemsFtsTable(lang)
 
-	// Detect whether this is a brand-new table (needs a one-time backfill) or one
-	// that already existed (kept in sync incrementally by triggers, so a full
-	// rebuild would just be wasted work every time Migrate runs).
+	// 判断该表是首次创建（需要一次性回填），还是已经存在
+	//（已由触发器增量同步，每次 Migrate 都重建纯属浪费）。
 	var existingCount int64
 	if err := db.Raw(
 		`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, ftsTable,
@@ -241,9 +231,8 @@ func (db *DB) migrateFtsForLang(lang Lang) error {
 		)
 	}
 
-	// content_text is the plain concatenation of the poem's paragraphs, extracted
-	// from the JSON array stored in poems.content, so the index (and LIKE queries
-	// against it) match on readable text rather than raw JSON punctuation.
+	// content_text 是从 poems.content 这个 JSON 数组中取出各段落拼接而成的纯文本，
+	// 这样索引（以及针对它的 LIKE 查询）匹配的是可读正文，而非 JSON 里的原始标点。
 	const contentTextExpr = `(SELECT COALESCE(group_concat(value, ''), '') FROM json_each(%s.content))`
 
 	insertTrigger := fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %[2]s_fts_ai AFTER INSERT ON %[2]s BEGIN
@@ -254,9 +243,9 @@ func (db *DB) migrateFtsForLang(lang Lang) error {
 		return fmt.Errorf("failed to create insert trigger for %s: %w", ftsTable, err)
 	}
 
-	// Note: the fts5 special "INSERT INTO fts(fts, rowid, ...) VALUES ('delete', ...)"
-	// marker syntax only applies to external-content tables; this table is
-	// self-contained (see comment above), so removal is a plain DELETE by rowid.
+	// 注意：FTS5 中 "INSERT INTO fts(fts, rowid, ...) VALUES ('delete', ...)" 这种
+	// 特殊删除语法只适用于 external-content 表；本表是自包含的（见上文说明），
+	// 因此直接按 rowid 执行普通 DELETE 即可。
 	deleteTrigger := fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %[2]s_fts_ad AFTER DELETE ON %[2]s BEGIN
 		DELETE FROM %[1]s WHERE rowid = old.id;
 	END`, ftsTable, poemTable)
@@ -273,14 +262,11 @@ func (db *DB) migrateFtsForLang(lang Lang) error {
 		return fmt.Errorf("failed to create update trigger for %s: %w", ftsTable, err)
 	}
 
-	// Backfill only on first creation: existing rows predate the triggers, but a
-	// table that already existed is already up to date, so skip the (expensive,
-	// full-corpus) rebuild on every subsequent migration run.
+	// 仅在首次创建时回填：已有数据早于触发器存在，需要补进索引；
+	// 而此前已存在的表本身就是最新的，没必要在每次迁移时都做一遍全量重建。
 	//
-	// FTS5's built-in 'rebuild' command only works when the fts5 table's columns
-	// share names with real columns on the content table, which content_text
-	// (a derived expression, not a stored column) does not, so backfill manually
-	// with the same expression the triggers use.
+	// FTS5 内置的 'rebuild' 命令要求 fts5 表的列名与内容表的真实列一一对应，
+	// 而 content_text 是派生表达式而非存储列，因此这里用触发器里相同的表达式手动回填。
 	if existingCount == 0 {
 		backfillSQL := fmt.Sprintf(`INSERT INTO %[1]s(rowid, title, content_text)
 			SELECT id, title, `+fmt.Sprintf(contentTextExpr, poemTable)+`
@@ -293,12 +279,12 @@ func (db *DB) migrateFtsForLang(lang Lang) error {
 	return nil
 }
 
-// insertInitialDataForLang inserts initial data for a specific language variant
+// insertInitialDataForLang 为指定语言变体写入朝代、体裁等初始数据。
 func (db *DB) insertInitialDataForLang(lang Lang) error {
 	dynastyTable := dynastiesTable(lang)
 	poetryTypeTable := poetryTypesTable(lang)
 
-	// Prepare SQL - convert to traditional if needed
+	// 把 SQL 中的表名替换为该变体的表名，繁体库还需做简转繁
 	dynastiesSQL := strings.ReplaceAll(InitialDynastiesSQL, "dynasties", dynastyTable)
 	poetryTypesSQL := strings.ReplaceAll(InitialPoetryTypesSQL, "poetry_types", poetryTypeTable)
 
@@ -314,12 +300,12 @@ func (db *DB) insertInitialDataForLang(lang Lang) error {
 		}
 	}
 
-	// Insert dynasties
+	// 写入朝代数据
 	if err := db.Exec(dynastiesSQL).Error; err != nil {
 		return fmt.Errorf("failed to insert dynasties: %w", err)
 	}
 
-	// Insert poetry types
+	// 写入体裁数据
 	if err := db.Exec(poetryTypesSQL).Error; err != nil {
 		return fmt.Errorf("failed to insert poetry types: %w", err)
 	}
@@ -327,14 +313,13 @@ func (db *DB) insertInitialDataForLang(lang Lang) error {
 	return nil
 }
 
-// convertSQLToTraditional converts Chinese characters in SQL string to traditional
-// Preserves SQL syntax and only converts Chinese text within quotes
+// convertSQLToTraditional 把 SQL 语句中的中文转为繁体，
+// 只转换单引号内的字符串字面量，保证 SQL 语法本身不受影响。
 func convertSQLToTraditional(sql string) (string, error) {
-	// Split by single quotes to find string literals
+	// 以单引号切分，奇数下标的片段即字符串字面量内部
 	parts := strings.Split(sql, "'")
 
 	for i := range parts {
-		// Only convert odd-indexed parts (inside quotes)
 		if i%2 == 1 {
 			converted, err := classifier.ToTraditional(parts[i])
 			if err != nil {
@@ -347,7 +332,7 @@ func convertSQLToTraditional(sql string) (string, error) {
 	return strings.Join(parts, "'"), nil
 }
 
-// GetSchemaVersion returns the current schema version
+// GetSchemaVersion 返回当前的 schema 版本号，未记录时返回 0。
 func (db *DB) GetSchemaVersion() (int, error) {
 	var version int
 	err := db.Raw(`SELECT value FROM metadata WHERE key = ?`, "schema_version").Scan(&version).Error
@@ -360,7 +345,7 @@ func (db *DB) GetSchemaVersion() (int, error) {
 	return version, nil
 }
 
-// Close closes the database connection
+// Close 关闭数据库连接。
 func (db *DB) Close() error {
 	sqlDB, err := db.DB.DB()
 	if err != nil {

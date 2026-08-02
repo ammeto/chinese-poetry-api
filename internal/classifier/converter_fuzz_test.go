@@ -5,9 +5,9 @@ import (
 	"unicode/utf8"
 )
 
-// FuzzToTraditional tests the ToTraditional function with random inputs
+// FuzzToTraditional 用随机输入对 ToTraditional 做模糊测试。
 func FuzzToTraditional(f *testing.F) {
-	// Seed corpus with known cases
+	// 用已知用例作为种子语料
 	f.Add("简体中文")
 	f.Add("床前明月光")
 	f.Add("李白")
@@ -17,20 +17,20 @@ func FuzzToTraditional(f *testing.F) {
 	f.Add("混合text文字123")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		// The function should not panic
+		// 函数不应 panic
 		result, err := ToTraditional(input)
 
-		// Should not return error for valid UTF-8 strings
+		// 合法的 UTF-8 字符串不应返回错误
 		if utf8.ValidString(input) && err != nil {
 			t.Errorf("ToTraditional(%q) returned unexpected error: %v", input, err)
 		}
 
-		// Result should be valid UTF-8
+		// 结果应是合法的 UTF-8
 		if !utf8.ValidString(result) {
 			t.Errorf("ToTraditional(%q) returned invalid UTF-8: %q", input, result)
 		}
 
-		// Converting back should give us something (idempotency test)
+		// 再转换回来应仍有结果（幂等性验证）
 		if err == nil {
 			backConverted, err2 := ToSimplified(result)
 			if err2 != nil {
@@ -43,9 +43,9 @@ func FuzzToTraditional(f *testing.F) {
 	})
 }
 
-// FuzzToSimplified tests the ToSimplified function with random inputs
+// FuzzToSimplified 用随机输入对 ToSimplified 做模糊测试。
 func FuzzToSimplified(f *testing.F) {
-	// Seed corpus with known cases
+	// 用已知用例作为种子语料
 	f.Add("繁體中文")
 	f.Add("靜夜思")
 	f.Add("李白")
@@ -55,20 +55,20 @@ func FuzzToSimplified(f *testing.F) {
 	f.Add("混合text文字123")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		// The function should not panic
+		// 函数不应 panic
 		result, err := ToSimplified(input)
 
-		// Should not return error for valid UTF-8 strings
+		// 合法的 UTF-8 字符串不应返回错误
 		if utf8.ValidString(input) && err != nil {
 			t.Errorf("ToSimplified(%q) returned unexpected error: %v", input, err)
 		}
 
-		// Result should be valid UTF-8
+		// 结果应是合法的 UTF-8
 		if !utf8.ValidString(result) {
 			t.Errorf("ToSimplified(%q) returned invalid UTF-8: %q", input, result)
 		}
 
-		// Converting back should give us something (idempotency test)
+		// 再转换回来应仍有结果（幂等性验证）
 		if err == nil {
 			backConverted, err2 := ToTraditional(result)
 			if err2 != nil {
@@ -81,9 +81,9 @@ func FuzzToSimplified(f *testing.F) {
 	})
 }
 
-// FuzzToTraditionalArray tests the ToTraditionalArray function
+// FuzzToTraditionalArray 对 ToTraditionalArray 做模糊测试。
 func FuzzToTraditionalArray(f *testing.F) {
-	// Seed corpus
+	// 种子语料
 	f.Add("简体", "中文", "测试")
 	f.Add("", "", "")
 	f.Add("李白", "杜甫", "白居易")
@@ -91,10 +91,10 @@ func FuzzToTraditionalArray(f *testing.F) {
 	f.Fuzz(func(t *testing.T, s1, s2, s3 string) {
 		input := []string{s1, s2, s3}
 
-		// Should not panic
+		// 不应 panic
 		result, err := ToTraditionalArray(input)
 
-		// Check for valid UTF-8 inputs
+		// 校验输入是否为合法 UTF-8
 		allValid := true
 		for _, s := range input {
 			if !utf8.ValidString(s) {
@@ -107,12 +107,12 @@ func FuzzToTraditionalArray(f *testing.F) {
 			t.Errorf("ToTraditionalArray(%v) returned unexpected error: %v", input, err)
 		}
 
-		// Result should have same length
+		// 结果长度应与输入一致
 		if err == nil && len(result) != len(input) {
 			t.Errorf("ToTraditionalArray(%v) returned wrong length: got %d, want %d", input, len(result), len(input))
 		}
 
-		// All results should be valid UTF-8
+		// 每一项结果都应是合法的 UTF-8
 		if err == nil {
 			for i, s := range result {
 				if !utf8.ValidString(s) {

@@ -17,10 +17,9 @@ import (
 
 // Poems is the resolver for the poems field.
 //
-// Note: this field has no lang argument and gqlgen resolves child fields with
-// the original request context, so the parent query's lang cannot reach here -
-// these poems are always simplified. Giving Author.poems its own lang argument
-// would fix it, but that is a schema change.
+// 注意：该字段没有 lang 参数，而 gqlgen 解析子字段时用的是原始请求上下文，
+// 父查询的 lang 传不到这里，因此这里返回的始终是简体。
+// 给 Author.poems 单独加一个 lang 参数可以解决，但那属于 schema 变更。
 func (r *authorResolver) Poems(ctx context.Context, obj *database.Author, page *int, pageSize *int) (*database.PoemConnection, error) {
 	pag, err := parsePagination(page, pageSize)
 	if err != nil {
@@ -37,9 +36,9 @@ func (r *authorResolver) Poems(ctx context.Context, obj *database.Author, page *
 
 // PoemCount is the resolver for the poemCount field.
 //
-// Counts here and on Dynasty/PoetryType use the default (simplified) tables.
-// Like Author.poems above they cannot see the query's lang, but unlike it that
-// is harmless: the variants hold the same corpus converted, so the counts match.
+// 这里以及 Dynasty、PoetryType 上的计数都走默认的简体表。
+// 与上面的 Author.poems 一样读不到查询的 lang，但此处无妨：
+// 简繁两套表是同一份语料的互转结果，计数完全一致。
 func (r *authorResolver) PoemCount(ctx context.Context, obj *database.Author) (int, error) {
 	return r.Repo.CountPoemsByAuthor(obj.ID)
 }
@@ -91,7 +90,7 @@ func (r *queryResolver) Poems(ctx context.Context, lang *database.Lang, page *in
 		return nil, err
 	}
 
-	// Parse filter IDs
+	// 解析各项过滤 ID
 	dynastyIDInt, err := parseOptionalID(dynastyID)
 	if err != nil {
 		return nil, err
@@ -105,8 +104,8 @@ func (r *queryResolver) Poems(ctx context.Context, lang *database.Lang, page *in
 		return nil, err
 	}
 
-	// The GraphQL schema exposes a single typeID; the repository takes a slice
-	// because the REST endpoint accepts repeated type_id params.
+	// GraphQL schema 只暴露单个 typeID；仓储层接收切片，
+	// 是因为 REST 接口允许重复传入 type_id 参数。
 	var typeIDs []int64
 	if typeIDInt != nil {
 		typeIDs = []int64{*typeIDInt}
@@ -123,14 +122,14 @@ func (r *queryResolver) Poems(ctx context.Context, lang *database.Lang, page *in
 
 // SearchPoems is the resolver for the searchPoems field.
 func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *database.Lang, searchType *model.SearchType, page *int, pageSize *int) (*database.PoemConnection, error) {
-	// Use the shared helper rather than reading the arguments directly, which
-	// is what let this resolver bypass the pageSize cap the others enforce.
+	// 统一走公共的解析函数，而非直接读取参数——
+	// 后者正是本 resolver 曾经绕过 pageSize 上限的原因。
 	pag, err := parsePagination(page, pageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// Map GraphQL search type to repository search type
+	// 把 GraphQL 的搜索类型映射为仓储层的取值
 	st := "all"
 	if searchType != nil {
 		switch *searchType {
@@ -143,7 +142,6 @@ func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *dat
 		}
 	}
 
-	// Use repository's SearchPoems with language context
 	langVal := parseLang(lang)
 	repo := r.Repo.WithLang(langVal)
 	poems, total, err := repo.SearchPoems(query, st, pag.Page, pag.PageSize)
@@ -151,18 +149,17 @@ func (r *queryResolver) SearchPoems(ctx context.Context, query string, lang *dat
 		return nil, err
 	}
 
-	// Build the connection with the shared helper rather than by hand. The
-	// hand-rolled version numbered cursors from 0 within each page, so page 2's
-	// first edge carried the same cursor as page 1's, and it left startCursor
-	// and endCursor unset while every other connection populates them.
+	// 用公共函数构造 connection，不再手写。手写版本的游标在每页内都从 0 开始编号，
+	// 导致第 2 页首条边的游标与第 1 页的相同；而且没有填 startCursor 与 endCursor，
+	// 与其他所有 connection 的行为不一致。
 	return buildPoemConnection(poems, pag, int(total)), nil
 }
 
 // RandomPoem is the resolver for the randomPoem field.
 func (r *queryResolver) RandomPoem(ctx context.Context, lang *database.Lang, dynastyID *string, typeID *string) (*database.Poem, error) {
-	// Parse filter IDs. A malformed id is an error, not a filter to drop: a
-	// discarded filter used to widen the query to the whole corpus and return
-	// an unrelated poem, which is indistinguishable from a working request.
+	// 解析过滤 ID。格式错误的 ID 一律报错，而不是丢弃该过滤条件：
+	// 被丢弃的过滤条件会把查询范围扩大到全量语料并返回一首无关的诗，
+	// 这与一次正常请求毫无区别。
 	dynastyIDInt, err := parseOptionalID(dynastyID)
 	if err != nil {
 		return nil, err
@@ -177,7 +174,7 @@ func (r *queryResolver) RandomPoem(ctx context.Context, lang *database.Lang, dyn
 		typeIDs = []int64{*typeIDInt}
 	}
 
-	// Use repository's GetRandomPoem with language context (same as REST)
+	// 与 REST 一致，带语言上下文调用仓储层的 GetRandomPoem
 	langVal := parseLang(lang)
 	repo := r.Repo.WithLang(langVal)
 	return repo.GetRandomPoem(dynastyIDInt, nil, typeIDs)
@@ -190,7 +187,7 @@ func (r *queryResolver) Author(ctx context.Context, id string, lang *database.La
 		return nil, err
 	}
 
-	// Use Repository method which handles dynamic table names
+	// 走 Repository 的方法，由它处理动态表名
 	return r.Repo.WithLang(parseLang(lang)).GetAuthorByID(authorID)
 }
 

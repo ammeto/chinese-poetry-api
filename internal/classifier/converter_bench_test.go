@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// BenchmarkToTraditional benchmarks the ToTraditional function
+// BenchmarkToTraditional 测量 ToTraditional 的性能。
 func BenchmarkToTraditional(b *testing.B) {
 	testCases := []struct {
 		name  string
@@ -26,7 +26,7 @@ func BenchmarkToTraditional(b *testing.B) {
 	}
 }
 
-// BenchmarkToSimplified benchmarks the ToSimplified function
+// BenchmarkToSimplified 测量 ToSimplified 的性能。
 func BenchmarkToSimplified(b *testing.B) {
 	testCases := []struct {
 		name  string
@@ -48,7 +48,7 @@ func BenchmarkToSimplified(b *testing.B) {
 	}
 }
 
-// BenchmarkToTraditionalArray benchmarks the ToTraditionalArray function
+// BenchmarkToTraditionalArray 测量 ToTraditionalArray 的性能。
 func BenchmarkToTraditionalArray(b *testing.B) {
 	testCases := []struct {
 		name  string
@@ -72,7 +72,7 @@ func BenchmarkToTraditionalArray(b *testing.B) {
 	}
 }
 
-// BenchmarkToSimplifiedArray benchmarks the ToSimplifiedArray function
+// BenchmarkToSimplifiedArray 测量 ToSimplifiedArray 的性能。
 func BenchmarkToSimplifiedArray(b *testing.B) {
 	testCases := []struct {
 		name  string
@@ -96,7 +96,7 @@ func BenchmarkToSimplifiedArray(b *testing.B) {
 	}
 }
 
-// BenchmarkConvertPoemToTraditional benchmarks the ConvertPoemToTraditional function
+// BenchmarkConvertPoemToTraditional 测量 ConvertPoemToTraditional 的性能。
 func BenchmarkConvertPoemToTraditional(b *testing.B) {
 	title := "静夜思"
 	author := "李白"

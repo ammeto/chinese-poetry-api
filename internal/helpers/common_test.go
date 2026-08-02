@@ -142,7 +142,7 @@ func TestPaginationOffset(t *testing.T) {
 	}
 }
 
-// Helper functions
+// 辅助函数
 func stringPtr(s string) *string {
 	return &s
 }
