@@ -210,8 +210,7 @@ func (db *DB) migrateFtsForLang(lang Lang) error {
 	poemTable := poemsTable(lang)
 	ftsTable := poemsFtsTable(lang)
 
-	// 判断该表是首次创建（需要一次性回填），还是已经存在
-	//（已由触发器增量同步，每次 Migrate 都重建纯属浪费）。
+	// 判断该表是首次创建（需要一次性回填），还是已经存在（已由触发器增量同步，每次 Migrate 都重建纯属浪费）
 	var existingCount int64
 	if err := db.Raw(
 		`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, ftsTable,
