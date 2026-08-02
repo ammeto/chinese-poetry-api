@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config holds all configuration for the application
+// Config 是应用的全部配置。
 type Config struct {
 	Server    ServerConfig    `mapstructure:"server"`
 	Database  DatabaseConfig  `mapstructure:"database"`
@@ -18,51 +18,52 @@ type Config struct {
 	Search    SearchConfig    `mapstructure:"search"`
 }
 
-// ServerConfig holds server configuration
+// ServerConfig 是服务端配置。
 type ServerConfig struct {
 	Port int    `mapstructure:"port"`
 	Mode string `mapstructure:"mode"`
 }
 
-// DatabaseConfig holds database configuration
+// DatabaseConfig 是数据库配置。
 type DatabaseConfig struct {
 	Path         string `mapstructure:"path"`
-	MaxOpenConns int    `mapstructure:"max_open_conns"` // Maximum number of open connections
-	MaxIdleConns int    `mapstructure:"max_idle_conns"` // Maximum number of idle connections
+	MaxOpenConns int    `mapstructure:"max_open_conns"` // 最大连接数
+	MaxIdleConns int    `mapstructure:"max_idle_conns"` // 最大空闲连接数
 }
 
+// DownloadConfig 是数据集下载相关的配置。
 type DownloadConfig struct {
 	Enabled        bool   `mapstructure:"enabled"`
 	GithubRepo     string `mapstructure:"github_repo"`
 	ReleaseVersion string `mapstructure:"release_version"`
 }
 
-// RateLimitConfig holds rate limiting configuration
+// RateLimitConfig 是限流配置。
 type RateLimitConfig struct {
 	Enabled           bool    `mapstructure:"enabled"`
 	RequestsPerSecond float64 `mapstructure:"requests_per_second"`
 	Burst             int     `mapstructure:"burst"`
 }
 
-// GraphQLConfig holds GraphQL configuration
+// GraphQLConfig 是 GraphQL 相关配置。
 type GraphQLConfig struct {
 	Playground bool `mapstructure:"playground"`
 }
 
-// SearchConfig holds search configuration
+// SearchConfig 是搜索相关配置。
 type SearchConfig struct {
 	MaxResults      int `mapstructure:"max_results"`
 	DefaultPageSize int `mapstructure:"default_page_size"`
 }
 
-// Load loads configuration from file and environment variables
+// Load 从配置文件与环境变量中加载配置。
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
-	// Set defaults
+	// 设置默认值
 	setDefaults(v)
 
-	// Read config file if provided
+	// 指定了配置文件则读取
 	if configPath != "" {
 		v.SetConfigFile(configPath)
 		if err := v.ReadInConfig(); err != nil {
@@ -70,7 +71,7 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
-	// Override with environment variables
+	// 环境变量优先级更高，覆盖前面的取值
 	bindEnvVars(v)
 
 	var cfg Config
@@ -78,10 +79,10 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Auto-detect connection pool size based on CPU cores if not configured
+	// 未配置连接池大小时按 CPU 核数自动推算
 	cfg.applyConnectionPoolDefaults()
 
-	// Validate configuration
+	// 校验配置
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -103,14 +104,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("graphql.complexity_limit", 1000)
 	v.SetDefault("search.max_results", 1000)
 	v.SetDefault("search.default_page_size", 20)
-	// Database connection pool - auto-detect based on CPU cores
-	// 0 means auto-detect (will be set to runtime.NumCPU() in Load())
+	// 数据库连接池，0 表示自动推算（在 Load 中依据 runtime.NumCPU 确定）
 	v.SetDefault("database.max_open_conns", 0)
 	v.SetDefault("database.max_idle_conns", 0)
 }
 
 func bindEnvVars(v *viper.Viper) {
-	// Server
+	// 服务端
 	if port := os.Getenv("PORT"); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			v.Set("server.port", p)
@@ -120,14 +120,14 @@ func bindEnvVars(v *viper.Viper) {
 		v.Set("server.mode", mode)
 	}
 
-	// Hardcoded data directory (matches docker-compose volume mount)
+	// 数据目录写死，与 docker-compose 中挂载的卷保持一致
 	dataDir := "data"
 
-	// Database - use unified poetry.db (contains both simplified and traditional tables)
-	// The lang parameter in API requests determines which tables to query
+	// 统一使用 poetry.db，其中同时包含简体与繁体两套表；
+	// 具体查哪套由 API 请求中的 lang 参数决定
 	v.Set("database.path", fmt.Sprintf("%s/poetry.db", dataDir))
 
-	// Rate Limit
+	// 限流
 	if enabled := os.Getenv("RATE_LIMIT_ENABLED"); enabled != "" {
 		v.Set("rate_limit.enabled", enabled == "true")
 	}
@@ -142,7 +142,7 @@ func bindEnvVars(v *viper.Viper) {
 		}
 	}
 
-	// Database connection pool
+	// 数据库连接池
 	if maxOpen := os.Getenv("DB_MAX_OPEN_CONNS"); maxOpen != "" {
 		if m, err := strconv.Atoi(maxOpen); err == nil {
 			v.Set("database.max_open_conns", m)
@@ -155,7 +155,7 @@ func bindEnvVars(v *viper.Viper) {
 	}
 }
 
-// Validate validates the configuration
+// Validate 校验配置的合法性。
 func (c *Config) Validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Server.Port)
@@ -180,16 +180,16 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// applyConnectionPoolDefaults sets intelligent defaults for connection pool based on CPU cores
+// applyConnectionPoolDefaults 依据 CPU 核数为连接池设置合理的默认值。
 func (c *Config) applyConnectionPoolDefaults() {
 	numCPU := runtime.NumCPU()
 
-	// Auto-detect max_open_conns if not configured (0 or negative)
+	// max_open_conns 未配置（为 0 或负数）时自动推算
 	if c.Database.MaxOpenConns <= 0 {
-		// Adaptive strategy based on CPU count:
-		// - Multi-core (>4): Use NumCPU directly (sufficient parallelism)
-		// - Few cores (≤4): Use NumCPU*2 to better utilize I/O wait time
-		// - Cap at 50 to prevent excessive connections
+		// 按核数自适应：
+		//   - 多核（>4）：直接取核数，并行度已足够
+		//   - 少核（≤4）：取核数的两倍，以更好地利用 I/O 等待时间
+		//   - 统一以 50 封顶，避免连接数过多
 		if numCPU > 4 {
 			c.Database.MaxOpenConns = min(numCPU, 50)
 		} else {
@@ -197,9 +197,9 @@ func (c *Config) applyConnectionPoolDefaults() {
 		}
 	}
 
-	// Auto-detect max_idle_conns if not configured
+	// max_idle_conns 未配置时自动推算
 	if c.Database.MaxIdleConns <= 0 {
-		// Idle connections should be about half of max open connections
+		// 空闲连接数取最大连接数的一半左右
 		c.Database.MaxIdleConns = max(c.Database.MaxOpenConns/2, 1)
 	}
 }

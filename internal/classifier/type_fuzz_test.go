@@ -5,9 +5,9 @@ import (
 	"unicode/utf8"
 )
 
-// FuzzClassifyPoetryType tests the ClassifyPoetryType function with random inputs
+// FuzzClassifyPoetryType 用随机输入对 ClassifyPoetryType 做模糊测试。
 func FuzzClassifyPoetryType(f *testing.F) {
-	// Seed corpus with known poetry structures
+	// 用已知的诗词结构作为种子语料
 	f.Add("床前明月光", "疑是地上霜", "举头望明月", "低头思故乡", "")
 	f.Add("春眠不觉晓", "处处闻啼鸟", "夜来风雨声", "花落知多少", "")
 	f.Add("", "", "", "", "")
@@ -29,10 +29,10 @@ func FuzzClassifyPoetryType(f *testing.F) {
 			paragraphs = append(paragraphs, p4)
 		}
 
-		// Should not panic
+		// 不应 panic
 		result := ClassifyPoetryType(paragraphs, rhythmic)
 
-		// Result should have valid fields
+		// 返回结构的各字段都应有效
 		if result.TypeName == "" {
 			t.Error("ClassifyPoetryType returned empty TypeName")
 		}
@@ -40,7 +40,7 @@ func FuzzClassifyPoetryType(f *testing.F) {
 			t.Error("ClassifyPoetryType returned empty Category")
 		}
 
-		// TypeName should be one of the known types
+		// TypeName 应属于已知体裁之一
 		validTypes := map[string]bool{
 			TypeWuyanJueju: true,
 			TypeQiyanJueju: true,
@@ -53,7 +53,7 @@ func FuzzClassifyPoetryType(f *testing.F) {
 			t.Errorf("ClassifyPoetryType returned invalid TypeName: %q", result.TypeName)
 		}
 
-		// Category should be one of the known categories
+		// Category 应属于已知大类之一
 		validCategories := map[string]bool{
 			CategoryPoetry: true,
 			CategoryCi:     true,
@@ -63,16 +63,16 @@ func FuzzClassifyPoetryType(f *testing.F) {
 			t.Errorf("ClassifyPoetryType returned invalid Category: %q", result.Category)
 		}
 
-		// If rhythmic is provided, should be classified as Ci
+		// 带词牌名的应判定为词
 		if rhythmic != "" && result.TypeName != TypeCi {
 			t.Errorf("ClassifyPoetryType with rhythmic %q should return TypeCi, got %q", rhythmic, result.TypeName)
 		}
 	})
 }
 
-// FuzzRemovePunctuation tests the removePunctuation function
+// FuzzRemovePunctuation 对 removePunctuation 做模糊测试。
 func FuzzRemovePunctuation(f *testing.F) {
-	// Seed corpus
+	// 种子语料
 	f.Add("床前明月光，疑是地上霜。")
 	f.Add("！@#$%^&*()")
 	f.Add("测试，。！？；：")
@@ -81,15 +81,15 @@ func FuzzRemovePunctuation(f *testing.F) {
 	f.Add("混合text，with。punctuation！")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		// Should not panic
+		// 不应 panic
 		result := removePunctuation(input)
 
-		// Result should be valid UTF-8
+		// 结果应是合法的 UTF-8
 		if !utf8.ValidString(result) {
 			t.Errorf("removePunctuation(%q) returned invalid UTF-8: %q", input, result)
 		}
 
-		// Result should not contain common punctuation
+		// 结果中不应残留常见标点
 		commonPunct := []string{"，", "。", "！", "？", "；", "：", ",", ".", "!", "?"}
 		for _, p := range commonPunct {
 			if len(result) > 0 && contains(result, p) {
@@ -99,9 +99,9 @@ func FuzzRemovePunctuation(f *testing.F) {
 	})
 }
 
-// FuzzSplitBySentence tests the splitBySentence function
+// FuzzSplitBySentence 对 splitBySentence 做模糊测试。
 func FuzzSplitBySentence(f *testing.F) {
-	// Seed corpus
+	// 种子语料
 	f.Add("床前明月光。疑是地上霜。")
 	f.Add("测试！多个？句子；分割，逗号")
 	f.Add("")
@@ -109,10 +109,10 @@ func FuzzSplitBySentence(f *testing.F) {
 	f.Add("。。。")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		// Should not panic
+		// 不应 panic
 		result := splitBySentence(input)
 
-		// All results should be non-empty and valid UTF-8
+		// 每一项结果都应非空且为合法 UTF-8
 		for i, s := range result {
 			if s == "" {
 				t.Errorf("splitBySentence(%q)[%d] returned empty string", input, i)
@@ -124,7 +124,7 @@ func FuzzSplitBySentence(f *testing.F) {
 	})
 }
 
-// Helper function to check if string contains substring
+// 判断字符串是否包含指定子串的辅助函数
 func contains(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

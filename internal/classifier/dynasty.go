@@ -1,6 +1,6 @@
 package classifier
 
-// DynastyInfo contains information about a dynasty
+// DynastyInfo 描述一个朝代的基本信息。
 type DynastyInfo struct {
 	Name      string
 	NameEn    string
@@ -8,7 +8,7 @@ type DynastyInfo struct {
 	EndYear   *int
 }
 
-// GetDynastyInfo returns information about a dynasty by name
+// GetDynastyInfo 按名称返回朝代信息，未收录的名称归入「其他」。
 func GetDynastyInfo(name string) DynastyInfo {
 	dynasties := map[string]DynastyInfo{
 		"唐": {

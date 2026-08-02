@@ -7,10 +7,10 @@ import (
 )
 
 func TestGetOptimalConfig(t *testing.T) {
-	// Test that config returns reasonable values
+	// 校验配置函数返回的取值是否合理
 	workBuf, resultBuf, errorBuf, defaultBatch, minBatch, maxBatch := getOptimalConfig()
 
-	// All values should be positive
+	// 所有取值都应为正数
 	assert.Greater(t, workBuf, 0, "workBuffer should be positive")
 	assert.Greater(t, resultBuf, 0, "resultBuffer should be positive")
 	assert.Greater(t, errorBuf, 0, "errorBuffer should be positive")
@@ -18,15 +18,15 @@ func TestGetOptimalConfig(t *testing.T) {
 	assert.Greater(t, minBatch, 0, "minBatch should be positive")
 	assert.Greater(t, maxBatch, 0, "maxBatch should be positive")
 
-	// Batch sizes should be ordered
+	// 批量大小应满足 min <= default <= max
 	assert.LessOrEqual(t, minBatch, defaultBatch, "minBatch <= defaultBatch")
 	assert.LessOrEqual(t, defaultBatch, maxBatch, "defaultBatch <= maxBatch")
 }
 
 func TestNewProcessor(t *testing.T) {
-	// Note: This test requires a real database connection
-	// For now, we just test that NewProcessor doesn't panic with nil
-	// In a real scenario, you'd use a test database
+	// 注：完整测试需要真实的数据库连接。
+	// 这里只验证 NewProcessor 传入 nil 时不会 panic，
+	// 实际场景下应改用测试数据库。
 
 	tests := []struct {
 		name               string
@@ -38,7 +38,7 @@ func TestNewProcessor(t *testing.T) {
 			name:               "default workers",
 			workers:            0,
 			convertTraditional: false,
-			wantWorkers:        1, // Will use runtime.NumCPU()
+			wantWorkers:        1, // 实际会取 runtime.NumCPU()
 		},
 		{
 			name:               "specific workers",
@@ -50,8 +50,7 @@ func TestNewProcessor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// We can't fully test without a database
-			// But we can verify the logic
+			// 没有数据库无法完整验证，但可以先校验这段逻辑本身
 			if tt.workers <= 0 {
 				assert.Greater(t, tt.wantWorkers, 0)
 			} else {
@@ -78,19 +77,19 @@ func TestSetBatchSize(t *testing.T) {
 			name:     "ignore zero",
 			initial:  100,
 			newSize:  0,
-			wantSize: 100, // Should keep previous value
+			wantSize: 100, // 非法取值应保持原值不变
 		},
 		{
 			name:     "ignore negative",
 			initial:  100,
 			newSize:  -10,
-			wantSize: 100, // Should keep previous value
+			wantSize: 100, // 非法取值应保持原值不变
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create fresh processor for each test
+			// 每个用例都新建处理器，避免相互影响
 			proc := &Processor{
 				batchSize: tt.initial,
 			}
@@ -100,7 +99,7 @@ func TestSetBatchSize(t *testing.T) {
 	}
 }
 
-// Benchmark tests
+// 基准测试
 func BenchmarkGetOptimalConfig(b *testing.B) {
 	for b.Loop() {
 		getOptimalConfig()

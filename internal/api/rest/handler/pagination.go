@@ -1,44 +1,48 @@
 package handler
 
 import (
-	"strconv"
+	"math"
 
 	"github.com/gin-gonic/gin"
 )
 
-// PaginationParams holds pagination parameters
+// PaginationParams 保存分页参数。
 type PaginationParams struct {
 	Page     int
 	PageSize int
 }
 
-// Offset returns the database offset
+// Offset 换算出查询时使用的偏移量。
 func (p PaginationParams) Offset() int {
 	return (p.Page - 1) * p.PageSize
 }
 
-// ParsePagination parses pagination parameters from context
-func ParsePagination(c *gin.Context) PaginationParams {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+// 分页的默认值与上限。
+const (
+	DefaultPage     = 1
+	DefaultPageSize = 20
+	MaxPageSize     = 100
+)
 
-	if page < 1 {
-		page = 1
+// ParsePagination 从请求上下文中解析分页参数。
+func ParsePagination(c *gin.Context) (PaginationParams, bool) {
+	page, ok := parseIntQuery(c, queryPage, DefaultPage, 1, math.MaxInt32)
+	if !ok {
+		return PaginationParams{}, false
 	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
+
+	pageSize, ok := parseIntQuery(c, queryPageSize, DefaultPageSize, 1, MaxPageSize)
+	if !ok {
+		return PaginationParams{}, false
 	}
 
 	return PaginationParams{
 		Page:     page,
 		PageSize: pageSize,
-	}
+	}, true
 }
 
-// NewPaginationResponse creates a standardized pagination response
+// NewPaginationResponse 构造统一格式的分页响应。
 func NewPaginationResponse(data any, params PaginationParams, total int64) gin.H {
 	totalPages := (int(total) + params.PageSize - 1) / params.PageSize
 

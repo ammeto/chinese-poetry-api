@@ -17,15 +17,15 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/graph/generated"
 )
 
-// setupTestResolver creates a test resolver with an in-memory database
+// setupTestResolver 基于内存数据库创建测试用的 resolver。
 func setupTestResolver(t *testing.T) (*Resolver, *database.Repository) {
-	// Create in-memory database
+	// 创建内存数据库
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
 	db := &database.DB{DB: gormDB}
 
-	// Use Migrate() to create language-specific tables
+	// 用 Migrate 建出各语言变体的表
 	err = db.Migrate()
 	require.NoError(t, err)
 
@@ -35,27 +35,28 @@ func setupTestResolver(t *testing.T) (*Resolver, *database.Repository) {
 	return resolver, repo
 }
 
-// createTestClient creates a GraphQL test client
+// createTestClient 创建 GraphQL 测试客户端。
 func createTestClient(t *testing.T, resolver *Resolver) *client.Client {
+	t.Helper()
 	srv := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{
 		Resolvers: resolver,
 	}))
 	return client.New(srv)
 }
 
-// createTestData creates test data in the database
+// createTestData 向数据库写入测试数据。
 func createTestData(t *testing.T, repo *database.Repository) (dynastyID, authorID int64, poemID int64) {
 	var err error
 
-	// Create dynasty
+	// 写入朝代
 	dynastyID, err = repo.GetOrCreateDynasty("唐")
 	require.NoError(t, err)
 
-	// Create author
+	// 写入作者
 	authorID, err = repo.GetOrCreateAuthor("李白", dynastyID)
 	require.NoError(t, err)
 
-	// Create poem
+	// 写入诗词
 	poem := &database.Poem{
 		ID:        1,
 		Title:     "静夜思",
@@ -95,9 +96,9 @@ func TestPoemQuery(t *testing.T) {
 			}
 		}
 
-		// Non-existent poem returns an error in GraphQL
+		// 查询不存在的诗词时 GraphQL 会返回错误
 		err := c.Post(`query { poem(id: "999") { title } }`, &resp)
-		// The error is expected since the poem doesn't exist
+		// 诗词本就不存在，报错属于预期行为
 		assert.Error(t, err)
 	})
 }
@@ -161,7 +162,7 @@ func TestSearchPoemsQuery(t *testing.T) {
 
 		err := c.Post(`query { searchPoems(query: "静夜思") { edges { node { title } } totalCount } }`, &resp)
 		require.NoError(t, err)
-		// Search should work
+		// 搜索应能正常返回
 		assert.NotNil(t, resp.SearchPoems)
 	})
 
@@ -221,7 +222,7 @@ func TestDynastiesQuery(t *testing.T) {
 func TestPoemTypesQuery(t *testing.T) {
 	resolver, _ := setupTestResolver(t)
 
-	// Poetry types are already seeded by Migrate(), no need to create manually
+	// 体裁已由 Migrate 预置，无需手动写入
 
 	c := createTestClient(t, resolver)
 
@@ -274,49 +275,65 @@ func TestRandomPoemQuery(t *testing.T) {
 
 		err := c.Post(`query { randomPoem { title } }`, &resp)
 		require.NoError(t, err)
-		// Should return a poem since we have data
+		// 已有数据，应能返回一首诗
 		assert.NotNil(t, resp.RandomPoem)
 	})
+
+	// 格式错误的 ID 曾被直接丢弃，过滤范围于是悄悄扩大到全量语料，
+	// 随手返回一首无关的诗且不报任何错误。
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"malformed dynastyId is rejected", `query { randomPoem(dynastyId: "abc") { title } }`},
+		{"malformed typeId is rejected", `query { randomPoem(typeId: "1.5") { title } }`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var resp struct{}
+			err := c.Post(tc.query, &resp)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid syntax")
+		})
+	}
 }
 
-// Integration test for context passing
+// 上下文传递的集成测试
 func TestResolverWithContext(t *testing.T) {
 	resolver, repo := setupTestResolver(t)
 	createTestData(t, repo)
 
 	ctx := context.Background()
 
-	// Test poem resolver directly (nil lang = default to simplified Chinese)
+	// 直接测试 poem resolver（lang 为 nil 时默认简体）
 	poem, err := resolver.Query().Poem(ctx, "1", nil)
 	require.NoError(t, err)
 	assert.NotNil(t, poem)
 	assert.Equal(t, "静夜思", poem.Title)
 }
 
-// createExtendedTestData creates additional test data for filter testing
+// createExtendedTestData 写入用于过滤条件测试的补充数据。
 func createExtendedTestData(t *testing.T, resolver *Resolver, repo *database.Repository) (tangDynastyID, songDynastyID, libaiAuthorID, dumuAuthorID, typeID int64) {
 	var err error
 
-	// Create Tang dynasty
+	// 写入唐朝
 	tangDynastyID, err = repo.GetOrCreateDynasty("唐")
 	require.NoError(t, err)
 
-	// Create Song dynasty
+	// 写入宋朝
 	songDynastyID, err = repo.GetOrCreateDynasty("宋")
 	require.NoError(t, err)
 
-	// Create authors
+	// 写入作者
 	libaiAuthorID, err = repo.GetOrCreateAuthor("李白", tangDynastyID)
 	require.NoError(t, err)
 
 	dumuAuthorID, err = repo.GetOrCreateAuthor("杜牧", tangDynastyID)
 	require.NoError(t, err)
 
-	// Poetry types are already seeded by Migrate()
-	// Use the pre-seeded ID for "七言绝句" which has ID 12
+	// 体裁由 Migrate 预置，这里直接使用「七言绝句」的既有 ID 12
 	typeID = 12
 
-	// Create poems with different authors and types
+	// 写入分属不同作者与体裁的诗词
 	poems := []*database.Poem{
 		{
 			ID:        1001,
@@ -352,7 +369,7 @@ func createExtendedTestData(t *testing.T, resolver *Resolver, repo *database.Rep
 	return tangDynastyID, songDynastyID, libaiAuthorID, dumuAuthorID, typeID
 }
 
-// TestPoemsWithFilters tests GraphQL poems query with dynastyId, authorId, typeId filters
+// TestPoemsWithFilters 测试 GraphQL poems 查询的 dynastyId、authorId、typeId 过滤。
 func TestPoemsWithFilters(t *testing.T) {
 	resolver, repo := setupTestResolver(t)
 	tangID, _, libaiID, _, typeID := createExtendedTestData(t, resolver, repo)
@@ -391,7 +408,7 @@ func TestPoemsWithFilters(t *testing.T) {
 		query := fmt.Sprintf(`query { poems(authorId: "%d") { edges { node { title } } totalCount } }`, libaiID)
 		err := c.Post(query, &resp)
 		require.NoError(t, err)
-		assert.Equal(t, 2, resp.Poems.TotalCount) // Li Bai has 2 poems
+		assert.Equal(t, 2, resp.Poems.TotalCount) // 李白有两首
 	})
 
 	t.Run("filter by typeId", func(t *testing.T) {
@@ -438,73 +455,42 @@ func TestPoemsWithFilters(t *testing.T) {
 	})
 }
 
-// TestPaginationBoundaries tests edge cases in pagination
+// TestPaginationBoundaries 测试分页的各种边界情况。
 func TestPaginationBoundaries(t *testing.T) {
 	resolver, repo := setupTestResolver(t)
 	createExtendedTestData(t, resolver, repo)
 	c := createTestClient(t, resolver)
 
-	t.Run("page 0 defaults to page 1", func(t *testing.T) {
+	// 越界的分页参数一律报错而非截断，这样客户端传 pageSize: 500 时
+	// 能明确知道自己并没有拿到 500 条。
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"page 0 is rejected", `query { poems(page: 0) { totalCount } }`, "page must be at least 1"},
+		{"negative page is rejected", `query { poems(page: -1) { totalCount } }`, "page must be at least 1"},
+		{"pageSize 0 is rejected", `query { poems(pageSize: 0) { totalCount } }`, "pageSize must be between"},
+		{"pageSize above the cap is rejected", `query { poems(pageSize: 500) { totalCount } }`, "pageSize must be between"},
+		// searchPoems 曾直接读取参数，完全没有做上限约束
+		{"searchPoems pageSize above the cap is rejected", `query { searchPoems(query: "李白", pageSize: 1000000) { totalCount } }`, "pageSize must be between"},
+		{"authors pageSize above the cap is rejected", `query { authors(pageSize: 500) { totalCount } }`, "pageSize must be between"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var resp struct{}
+			err := c.Post(tc.query, &resp)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+
+	t.Run("pageSize at the cap is accepted", func(t *testing.T) {
 		var resp struct {
 			Poems struct {
-				PageInfo struct {
-					HasPreviousPage bool
-				}
 				TotalCount int
 			}
 		}
-
-		err := c.Post(`query { poems(page: 0) { pageInfo { hasPreviousPage } totalCount } }`, &resp)
-		require.NoError(t, err)
-		assert.False(t, resp.Poems.PageInfo.HasPreviousPage)
-	})
-
-	t.Run("negative page defaults to page 1", func(t *testing.T) {
-		var resp struct {
-			Poems struct {
-				PageInfo struct {
-					HasPreviousPage bool
-				}
-			}
-		}
-
-		err := c.Post(`query { poems(page: -1) { pageInfo { hasPreviousPage } } }`, &resp)
-		require.NoError(t, err)
-		assert.False(t, resp.Poems.PageInfo.HasPreviousPage)
-	})
-
-	t.Run("pageSize 0 defaults to 20", func(t *testing.T) {
-		var resp struct {
-			Poems struct {
-				Edges []struct {
-					Node struct {
-						Title string
-					}
-				}
-			}
-		}
-
-		err := c.Post(`query { poems(pageSize: 0) { edges { node { title } } } }`, &resp)
-		require.NoError(t, err)
-		// Should return all 3 poems since default is 20
-		assert.GreaterOrEqual(t, len(resp.Poems.Edges), 1)
-	})
-
-	t.Run("very large pageSize is capped at 100", func(t *testing.T) {
-		var resp struct {
-			Poems struct {
-				Edges []struct {
-					Node struct {
-						Title string
-					}
-				}
-			}
-		}
-
-		err := c.Post(`query { poems(pageSize: 500) { edges { node { title } } } }`, &resp)
-		require.NoError(t, err)
-		// Should still work, just capped
-		assert.NotNil(t, resp.Poems.Edges)
+		require.NoError(t, c.Post(`query { poems(pageSize: 100) { totalCount } }`, &resp))
 	})
 
 	t.Run("hasNextPage is true when more data exists", func(t *testing.T) {
@@ -539,7 +525,7 @@ func TestPaginationBoundaries(t *testing.T) {
 	})
 }
 
-// TestAuthorsWithFilters tests GraphQL authors query with dynastyId filter
+// TestAuthorsWithFilters 测试 GraphQL authors 查询的 dynastyId 过滤。
 func TestAuthorsWithFilters(t *testing.T) {
 	resolver, repo := setupTestResolver(t)
 	tangID, songID, _, _, _ := createExtendedTestData(t, resolver, repo)
@@ -560,7 +546,7 @@ func TestAuthorsWithFilters(t *testing.T) {
 		query := fmt.Sprintf(`query { authors(dynastyId: "%d") { edges { node { name } } totalCount } }`, tangID)
 		err := c.Post(query, &resp)
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, resp.Authors.TotalCount, 2) // Li Bai and Du Mu
+		assert.GreaterOrEqual(t, resp.Authors.TotalCount, 2) // 李白与杜牧
 	})
 
 	t.Run("filter authors by non-existent dynastyId", func(t *testing.T) {
@@ -573,7 +559,7 @@ func TestAuthorsWithFilters(t *testing.T) {
 		query := fmt.Sprintf(`query { authors(dynastyId: "%d") { totalCount } }`, songID)
 		err := c.Post(query, &resp)
 		require.NoError(t, err)
-		// Song dynasty has no authors in test data
+		// 测试数据中宋朝没有作者
 		assert.Equal(t, 0, resp.Authors.TotalCount)
 	})
 }

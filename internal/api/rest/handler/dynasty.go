@@ -8,20 +8,27 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// DynastyHandler handles dynasty-related requests
+// DynastyHandler 处理朝代相关的请求。
 type DynastyHandler struct {
 	repo *database.Repository
 }
 
-// NewDynastyHandler creates a new dynasty handler
+// NewDynastyHandler 创建朝代 handler。
 func NewDynastyHandler(repo *database.Repository) *DynastyHandler {
 	return &DynastyHandler{repo: repo}
 }
 
-// ListDynasties returns a list of dynasties
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// ListDynasties 返回朝代列表。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
 func (h *DynastyHandler) ListDynasties(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
 	dynasties, err := repo.GetDynastiesWithStats()
@@ -38,10 +45,17 @@ func (h *DynastyHandler) ListDynasties(c *gin.Context) {
 	respondOK(c, data)
 }
 
-// GetDynasty returns a specific dynasty by ID
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// GetDynasty 按 ID 返回指定朝代。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
 func (h *DynastyHandler) GetDynasty(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
 	id, ok := parseID(c, "id", "dynasty")

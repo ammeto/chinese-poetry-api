@@ -22,7 +22,7 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/logger"
 )
 
-// Defining the Graphql handler
+// graphqlHandler 构造 GraphQL 请求的 Gin handler。
 func graphqlHandler(resolver *graph.Resolver) gin.HandlerFunc {
 	h := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{Resolvers: resolver}))
 
@@ -31,7 +31,7 @@ func graphqlHandler(resolver *graph.Resolver) gin.HandlerFunc {
 	}
 }
 
-// Defining the Playground handler
+// playgroundHandler 构造 GraphQL Playground 页面的 Gin handler。
 func playgroundHandler() gin.HandlerFunc {
 	h := playground.Handler("GraphQL", "/graphql")
 
@@ -41,12 +41,12 @@ func playgroundHandler() gin.HandlerFunc {
 }
 
 func main() {
-	// Initialize logger
+	// 初始化日志
 	debug := os.Getenv("GIN_MODE") != "release"
 	logger.Init(debug)
 	defer logger.Sync()
 
-	// Load configuration
+	// 加载配置，失败则退回默认配置
 	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		logger.Warn("Failed to load config file, using defaults", zap.Error(err))
@@ -60,36 +60,36 @@ func main() {
 		zap.Int("max_idle_conns", cfg.Database.MaxIdleConns),
 	)
 
-	// Open database with configured connection pool
+	// 按配置的连接池参数打开数据库
 	db, err := database.Open(cfg.Database.Path, cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns)
 	if err != nil {
 		logger.Fatal("Failed to open database", zap.Error(err))
 	}
 	defer func() { _ = db.Close() }()
 
-	// Create repository
+	// 创建仓储
 	repo := database.NewRepository(db)
 
-	// Create GraphQL resolver
+	// 创建 GraphQL resolver
 	resolver := graph.NewResolver(db, repo)
 
-	// Setup Gin router
+	// 初始化 Gin 路由
 	router := rest.SetupRouter(cfg, db, repo)
 
-	// Add GraphQL endpoints
+	// 注册 GraphQL 相关路由
 	router.POST("/graphql", graphqlHandler(resolver))
 	if cfg.GraphQL.Playground {
 		router.GET("/playground", playgroundHandler())
 		logger.Info("GraphQL Playground enabled", zap.String("path", "/playground"))
 	}
 
-	// Create HTTP server
+	// 构造 HTTP 服务
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler: router,
 	}
 
-	// Start server in goroutine
+	// 在独立协程中启动服务
 	go func() {
 		logger.Info("Server started",
 			zap.Int("port", cfg.Server.Port),
@@ -102,14 +102,14 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
+	// 等待中断信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("Shutting down server...")
 
-	// Graceful shutdown with timeout
+	// 带超时的优雅退出
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

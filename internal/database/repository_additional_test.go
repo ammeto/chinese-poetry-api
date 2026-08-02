@@ -11,25 +11,25 @@ import (
 	"gorm.io/datatypes"
 )
 
-// calculateTestHash generates a SHA256 hash for test content
+// calculateTestHash 为测试正文生成 SHA256 哈希。
 func calculateTestHash(content []byte) string {
 	hash := sha256.Sum256(content)
 	return hex.EncodeToString(hash[:])
 }
 
-// Test new repository methods added in repository_additional.go
+// 以下测试覆盖 repository_additional.go 中新增的仓储方法。
 
 func TestGetAuthorsWithStats(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	author1ID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 	_, _ = repo.GetOrCreateAuthor("杜甫", dynastyID)
 	typeID, _ := repo.GetPoetryTypeID("五言绝句")
 
-	// Create poems for authors
+	// 为各作者写入诗词
 	content1 := []byte(`["床前明月光"]`)
 	_ = createTestPoem(repo, &Poem{
 		ID:          1,
@@ -79,7 +79,7 @@ func TestGetAuthorsWithStats(t *testing.T) {
 			assert.Len(t, authors, tt.wantLen)
 
 			if len(authors) > 0 {
-				// First author should have most poems
+				// 首位作者的作品数应最多
 				assert.Greater(t, authors[0].PoemCount, 0)
 			}
 		})
@@ -133,7 +133,7 @@ func TestGetPoemsByAuthor(t *testing.T) {
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 	typeID, _ := repo.GetPoetryTypeID("五言绝句")
 
-	// Create test poems with unique content
+	// 写入正文互不相同的测试诗词
 	for i := range 5 {
 		content := []byte(fmt.Sprintf(`["测试内容%d"]`, i))
 		_ = createTestPoem(repo, &Poem{
@@ -170,7 +170,7 @@ func TestGetDynastiesWithStats(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynasty1ID, _ := repo.GetOrCreateDynasty("唐")
 	_, _ = repo.GetOrCreateDynasty("宋")
 
@@ -192,7 +192,7 @@ func TestGetDynastiesWithStats(t *testing.T) {
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(dynasties), 2)
 
-	// Find Tang dynasty
+	// 找出唐朝
 	var tangDynasty *DynastyWithStats
 	for i := range dynasties {
 		if dynasties[i].Name == "唐" {
@@ -239,11 +239,11 @@ func TestGetPoetryTypesWithStats(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
-	// Create poetry type first
+	// 先写入体裁
 	poetryType := &PoetryType{
 		Name:     "五言绝句",
 		Category: "诗",
@@ -266,7 +266,7 @@ func TestGetPoetryTypesWithStats(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, len(types), 0)
 
-	// Find the type we created
+	// 找出刚写入的体裁
 	var foundType *PoetryTypeWithStats
 	for i := range types {
 		if types[i].ID == typeID {
@@ -283,7 +283,7 @@ func TestGetPoetryTypeByID(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create a poetry type for testing
+	// 写入测试用的体裁
 	poetryType := &PoetryType{
 		Name:     "五言绝句",
 		Category: "诗",
@@ -331,7 +331,7 @@ func TestGetPoemsByType(t *testing.T) {
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 	typeID, _ := repo.GetPoetryTypeID("五言绝句")
 
-	// Create test poems with unique content
+	// 写入正文互不相同的测试诗词
 	for i := range 3 {
 		content := []byte(fmt.Sprintf(`["测试内容%d"]`, i))
 		_ = createTestPoem(repo, &Poem{

@@ -9,50 +9,50 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// SetupRouter sets up the Gin router with all routes
+// SetupRouter 初始化 Gin 路由并注册全部接口。
 func SetupRouter(cfg *config.Config, db *database.DB, repo *database.Repository) *gin.Engine {
-	// Set Gin mode
+	// 设置 Gin 运行模式
 	gin.SetMode(cfg.Server.Mode)
 
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
-	// CORS middleware
+	// 跨域中间件
 	router.Use(middleware.CORS())
 
-	// Rate limiting middleware
+	// 限流中间件
 	if cfg.RateLimit.Enabled {
 		rateLimiter := middleware.NewRateLimiter(cfg.RateLimit.RequestsPerSecond, cfg.RateLimit.Burst)
 		router.Use(rateLimiter.Middleware())
 	}
 
-	// API v1 routes
+	// v1 版本接口
 	v1 := router.Group("/api/v1")
 	{
-		// Health check
+		// 健康检查
 		v1.GET("/health", handler.HealthHandler(db))
 
-		// Statistics
+		// 统计数据
 		v1.GET("/stats", handler.StatsHandler(repo))
 
-		// Poem routes
+		// 诗词相关
 		poemHandler := handler.NewPoemHandler(repo)
 		v1.GET("/poems", poemHandler.ListPoems)
 		v1.GET("/poems/random", poemHandler.RandomPoem)
 		v1.GET("/poems/search", poemHandler.SearchPoems)
 
-		// Author routes
+		// 作者相关
 		authorHandler := handler.NewAuthorHandler(repo)
 		v1.GET("/authors", authorHandler.ListAuthors)
 		v1.GET("/authors/:id", authorHandler.GetAuthor)
 
-		// Dynasty routes
+		// 朝代相关
 		dynastyHandler := handler.NewDynastyHandler(repo)
 		v1.GET("/dynasties", dynastyHandler.ListDynasties)
 		v1.GET("/dynasties/:id", dynastyHandler.GetDynasty)
 
-		// Poetry type routes
+		// 体裁相关
 		poetryTypeHandler := handler.NewPoetryTypeHandler(repo)
 		v1.GET("/types", poetryTypeHandler.ListPoetryTypes)
 		v1.GET("/types/:id", poetryTypeHandler.GetPoetryType)

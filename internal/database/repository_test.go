@@ -9,27 +9,27 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupTestDB creates an in-memory SQLite database for testing
-// Creates language-specific tables (zh_hans) for the default language
+// setupTestDB 创建测试用的内存 SQLite 数据库，
+// 并建出默认语言（zh_hans）对应的表。
 func setupTestDB(t *testing.T) *DB {
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err, "Failed to create test database")
 
 	db := &DB{DB: gormDB}
 
-	// Create tables for default language (zh_hans)
+	// 建出默认语言（zh_hans）的表
 	err = db.migrateTablesForLang(LangHans)
 	require.NoError(t, err, "Failed to run migrations")
 
 	return db
 }
 
-// createTestPoem is a helper to create poems in tests using dynamic table names
+// createTestPoem 是测试辅助函数，按动态表名写入诗词。
 func createTestPoem(repo *Repository, poem *Poem) error {
 	return repo.db.Table(repo.poemsTable()).Create(poem).Error
 }
 
-// createTestPoetryType is a helper to create poetry types in tests using dynamic table names
+// createTestPoetryType 是测试辅助函数，按动态表名写入体裁。
 func createTestPoetryType(repo *Repository, ptype *PoetryType) error {
 	return repo.db.Table(repo.poetryTypesTable()).Create(ptype).Error
 }
@@ -71,7 +71,7 @@ func TestGetOrCreateDynasty(t *testing.T) {
 				case 0:
 					firstID = id
 				case 1:
-					// Second call should return same ID
+					// 第二次调用应返回相同的 ID
 					assert.Equal(t, firstID, id, "Should return same ID for existing dynasty")
 				}
 			}
@@ -83,7 +83,7 @@ func TestGetOrCreateAuthor(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Create dynasty first
+	// 先写入朝代
 	dynastyID, err := repo.GetOrCreateDynasty("唐")
 	require.NoError(t, err)
 
@@ -133,7 +133,7 @@ func TestGetPoetryTypeID(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// First, create a poetry type for testing using dynamic table name
+	// 先按动态表名写入测试用的体裁
 	poetryType := &PoetryType{
 		Name:     "五言绝句",
 		Category: "诗",
@@ -168,7 +168,7 @@ func TestCountPoems(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Initially should be 0
+	// 初始应为 0
 	count, err := repo.CountPoems()
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
@@ -178,13 +178,13 @@ func TestCountAuthors(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
 
-	// Initially should be 0
+	// 初始应为 0
 	count, err := repo.CountAuthors()
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
 
-// Benchmark tests
+// 基准测试
 func BenchmarkGetOrCreateDynasty(b *testing.B) {
 	gormDB, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	_ = gormDB.AutoMigrate(&Dynasty{})

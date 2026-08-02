@@ -18,7 +18,7 @@ import (
 func TestHealthHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Create in-memory database
+	// 创建内存数据库
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -63,19 +63,19 @@ func TestHealthHandler(t *testing.T) {
 func TestStatsHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Create in-memory database
+	// 创建内存数据库
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
 	db := &database.DB{DB: gormDB}
 
-	// Use Migrate() for language-specific tables
+	// 用 Migrate 建出各语言变体的表
 	err = db.Migrate()
 	require.NoError(t, err)
 
 	repo := database.NewRepository(db)
 
-	// Create some test data
+	// 写入若干测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	_, _ = repo.GetOrCreateAuthor("李白", dynastyID)
 

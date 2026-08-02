@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -10,34 +12,52 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// PoemHandler handles poem-related requests
+// PoemHandler 处理诗词相关的请求。
 type PoemHandler struct {
 	repo *database.Repository
 }
 
-// NewPoemHandler creates a new poem handler
+// NewPoemHandler 创建诗词 handler。
 func NewPoemHandler(repo *database.Repository) *PoemHandler {
 	return &PoemHandler{
 		repo: repo,
 	}
 }
 
-// ListPoems retrieves a paginated list of poems
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// ListPoems 分页返回诗词列表。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
+// 过滤条件与 RandomPoem 一致，可按名称：?author=李白&type=五言绝句&dynasty=唐
+// 也可按 ID：?author_id=123&type_id=456&type_id=789&dynasty_id=6
 func (h *PoemHandler) ListPoems(c *gin.Context) {
-	lang := parseLang(c)
-	repo := h.repo.WithLang(lang)
-	pagination := ParsePagination(c)
-
-	poems, err := repo.ListPoems(pagination.PageSize, pagination.Offset())
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, "failed to retrieve poems")
+	if !checkQueryParams(c, append([]string{queryLang, queryPage, queryPageSize}, filterQueryKeys...)...) {
 		return
 	}
 
-	total, err := repo.CountPoems()
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
+	repo := h.repo.WithLang(lang)
+
+	pagination, ok := ParsePagination(c)
+	if !ok {
+		return
+	}
+
+	filters, ok := parsePoemFilters(c, repo)
+	if !ok {
+		return
+	}
+
+	// 与 GraphQL 的 poems resolver 共用 ListPoemsWithFilter，
+	// 保证相同过滤条件下两套 API 返回的内容与顺序完全一致。
+	poems, total, err := repo.ListPoemsWithFilter(
+		pagination.PageSize, pagination.Offset(),
+		filters.dynastyID, filters.authorID, filters.typeIDs,
+	)
 	if err != nil {
-		total = 0
+		respondError(c, http.StatusInternalServerError, "failed to retrieve poems")
+		return
 	}
 
 	data := make([]map[string]any, len(poems))
@@ -48,21 +68,39 @@ func (h *PoemHandler) ListPoems(c *gin.Context) {
 	c.JSON(http.StatusOK, NewPaginationResponse(data, pagination, int64(total)))
 }
 
-// SearchPoems searches for poems by query string
+// searchTypes 列出搜索接口 type 参数的合法取值。
+var searchTypes = []string{"all", "title", "content", "author"}
+
+// SearchPoems 按关键词搜索诗词。
 func (h *PoemHandler) SearchPoems(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang, queryPage, queryPageSize, queryQuery, queryType) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
-	query := c.Query("q")
+	query := c.Query(queryQuery)
 	if query == "" {
 		respondError(c, http.StatusBadRequest, "query parameter 'q' is required")
 		return
 	}
 
-	searchType := c.DefaultQuery("type", "all")
-	pagination := ParsePagination(c)
+	searchType := c.DefaultQuery(queryType, "all")
+	if !slices.Contains(searchTypes, searchType) {
+		respondError(c, http.StatusBadRequest, "unsupported type "+strconv.Quote(searchType)+
+			"; supported: "+strings.Join(searchTypes, ", "))
+		return
+	}
 
-	// Use repository's search method instead of search engine
+	pagination, ok := ParsePagination(c)
+	if !ok {
+		return
+	}
+
 	poems, total, err := repo.SearchPoems(query, searchType, pagination.Page, pagination.PageSize)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "search failed")
@@ -77,24 +115,106 @@ func (h *PoemHandler) SearchPoems(c *gin.Context) {
 	c.JSON(http.StatusOK, NewPaginationResponse(data, pagination, total))
 }
 
-// filterQueryKeys lists every RandomPoem filter param other than char/lang.
-// Used to reject char being combined with them (see RandomPoem doc comment).
-var filterQueryKeys = []string{"author_id", "author", "type_id", "type", "dynasty_id", "dynasty"}
+// filterQueryKeys 列出 /poems 与 /poems/random 共用的作者、体裁、朝代过滤参数。
+// 同时用于拒绝 char 与这些参数一起使用（见 RandomPoem 的说明）。
+var filterQueryKeys = []string{queryAuthorID, queryAuthor, queryTypeID, queryType, queryDynastyID, queryDynasty}
 
-// RandomPoem returns a random poem with optional filters
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
-// Supports filters: ?author=李白&type=五言绝句&type=七言绝句&dynasty=唐
-// Or by ID: ?author_id=123&type_id=456&type_id=789&dynasty_id=789
+// poemFilters 保存解析后的作者、体裁、朝代过滤条件。
+// id 为 nil 或 typeIDs 为空表示该字段不过滤。
+type poemFilters struct {
+	dynastyID *int64
+	authorID  *int64
+	typeIDs   []int64
+}
+
+// parsePoemFilters 解析 filterQueryKeys 中的各项过滤条件，
+// 并通过 repo 把按名称传入的形式（如 ?author=李白）解析为 ID。
+// 遇到格式错误的 ID 返回 400、名称查不到返回 404，此时直接写响应并返回 false。
 //
-// Supports 飞花令-style single-character search: ?char=春
-// char is only combinable with lang - not with author/type/dynasty filters,
-// since it selects poems via the FTS content index rather than the id-based
-// filters used elsewhere in this handler.
+// 每项条件既可传 ID 也可传名称，两者同时出现时以 ID 为准。
+func parsePoemFilters(c *gin.Context, repo *database.Repository) (poemFilters, bool) {
+	var filters poemFilters
+
+	// 作者过滤：按 ID 或名称
+	authorID, ok := parseInt64Query(c, queryAuthorID)
+	if !ok {
+		return poemFilters{}, false
+	}
+	switch {
+	case authorID != nil:
+		filters.authorID = authorID
+	case c.Query(queryAuthor) != "":
+		author, err := repo.GetAuthorByName(c.Query(queryAuthor))
+		if err != nil {
+			respondError(c, http.StatusNotFound, "author not found")
+			return poemFilters{}, false
+		}
+		filters.authorID = &author.ID
+	}
+
+	// 体裁过滤：按 ID 或名称，支持多个取值，彼此为 OR 关系
+	typeIDStrs := c.QueryArray(queryTypeID)
+	typeNames := c.QueryArray(queryType)
+	switch {
+	case len(typeIDStrs) > 0:
+		for _, idStr := range typeIDStrs {
+			id, err := strconv.ParseInt(idStr, 10, 64)
+			if err != nil {
+				respondError(c, http.StatusBadRequest, queryTypeID+" must be an integer, got "+strconv.Quote(idStr))
+				return poemFilters{}, false
+			}
+			filters.typeIDs = append(filters.typeIDs, id)
+		}
+	case len(typeNames) > 0:
+		// 一次查询批量解析体裁名称
+		ids, err := repo.GetPoetryTypeIDs(typeNames)
+		if err != nil {
+			respondError(c, http.StatusNotFound, "poetry type not found")
+			return poemFilters{}, false
+		}
+		filters.typeIDs = ids
+	}
+
+	// 朝代过滤：按 ID 或名称
+	dynastyID, ok := parseInt64Query(c, queryDynastyID)
+	if !ok {
+		return poemFilters{}, false
+	}
+	switch {
+	case dynastyID != nil:
+		filters.dynastyID = dynastyID
+	case c.Query(queryDynasty) != "":
+		dynasty, err := repo.GetDynastyByName(c.Query(queryDynasty))
+		if err != nil {
+			respondError(c, http.StatusNotFound, "dynasty not found")
+			return poemFilters{}, false
+		}
+		filters.dynastyID = &dynasty.ID
+	}
+
+	return filters, true
+}
+
+// RandomPoem 按可选条件随机返回一首诗词。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
+// 过滤条件可按名称：?author=李白&type=五言绝句&type=七言绝句&dynasty=唐
+// 也可按 ID：?author_id=123&type_id=456&type_id=789&dynasty_id=789
+//
+// 另支持飞花令式的单字检索：?char=春
+// char 只能与 lang 搭配，不能叠加作者、体裁、朝代过滤，
+// 因为它经由 FTS 正文索引选词，与本 handler 其余基于 ID 的过滤属于不同查询形态。
 func (h *PoemHandler) RandomPoem(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, append([]string{queryLang, queryChar}, filterQueryKeys...)...) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
-	if char := c.Query("char"); char != "" {
+	if char := c.Query(queryChar); char != "" {
 		for _, key := range filterQueryKeys {
 			if c.Query(key) != "" {
 				respondError(c, http.StatusBadRequest, "char cannot be combined with author/type/dynasty filters")
@@ -116,63 +236,12 @@ func (h *PoemHandler) RandomPoem(c *gin.Context) {
 		return
 	}
 
-	// Parse filter parameters
-	var authorID, dynastyID *int64
-	var typeIDs []int64
-
-	// Parse author filter (by ID or name)
-	if authorIDStr := c.Query("author_id"); authorIDStr != "" {
-		if id, err := strconv.ParseInt(authorIDStr, 10, 64); err == nil {
-			authorID = &id
-		}
-	} else if authorName := c.Query("author"); authorName != "" {
-		// Look up author by name
-		author, err := repo.GetAuthorByName(authorName)
-		if err != nil {
-			respondError(c, http.StatusNotFound, "author not found")
-			return
-		}
-		authorID = &author.ID
+	filters, ok := parsePoemFilters(c, repo)
+	if !ok {
+		return
 	}
 
-	// Parse type filter (by ID or name) - supports multiple values
-	typeIDStrs := c.QueryArray("type_id")
-	typeNames := c.QueryArray("type")
-
-	if len(typeIDStrs) > 0 {
-		// Parse type IDs
-		for _, idStr := range typeIDStrs {
-			if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
-				typeIDs = append(typeIDs, id)
-			}
-		}
-	} else if len(typeNames) > 0 {
-		// Batch lookup types by name in a single query
-		ids, err := repo.GetPoetryTypeIDs(typeNames)
-		if err != nil {
-			respondError(c, http.StatusNotFound, "poetry type not found")
-			return
-		}
-		typeIDs = ids
-	}
-
-	// Parse dynasty filter (by ID or name)
-	if dynastyIDStr := c.Query("dynasty_id"); dynastyIDStr != "" {
-		if id, err := strconv.ParseInt(dynastyIDStr, 10, 64); err == nil {
-			dynastyID = &id
-		}
-	} else if dynastyName := c.Query("dynasty"); dynastyName != "" {
-		// Look up dynasty by name
-		dynasty, err := repo.GetDynastyByName(dynastyName)
-		if err != nil {
-			respondError(c, http.StatusNotFound, "dynasty not found")
-			return
-		}
-		dynastyID = &dynasty.ID
-	}
-
-	// Get a random poem with filters
-	poem, err := repo.GetRandomPoem(dynastyID, authorID, typeIDs)
+	poem, err := repo.GetRandomPoem(filters.dynastyID, filters.authorID, filters.typeIDs)
 	if err != nil {
 		respondError(c, http.StatusNotFound, "no poems found matching the criteria")
 		return

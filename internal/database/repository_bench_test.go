@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupBenchDB creates an in-memory database for benchmarking
+// setupBenchDB 创建基准测试用的内存数据库。
 func setupBenchDB(b *testing.B) (*DB, *Repository) {
 	gormDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -25,11 +25,11 @@ func setupBenchDB(b *testing.B) (*DB, *Repository) {
 	return db, repo
 }
 
-// BenchmarkGetPoemByID benchmarks single poem retrieval
+// BenchmarkGetPoemByID 测量单首诗词查询的性能。
 func BenchmarkGetPoemByID(b *testing.B) {
 	_, repo := setupBenchDB(b)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
@@ -47,19 +47,19 @@ func BenchmarkGetPoemByID(b *testing.B) {
 	}
 }
 
-// BenchmarkListPoems benchmarks poem listing with pagination
+// BenchmarkListPoems 测量分页列表查询的性能。
 func BenchmarkListPoems(b *testing.B) {
 	_, repo := setupBenchDB(b)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
-	// Prepare poems for insertion
+	// 准备待写入的诗词
 	poems := make([]*Poem, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		poems[i] = &Poem{
-			ID:        int64(i + 1), // Simple sequential ID
+			ID:        int64(i + 1), // 简单的顺序 ID
 			Title:     "测试诗词" + string(rune('A'+i%26)),
 			Content:   datatypes.JSON([]byte(`["测试内容"]`)),
 			AuthorID:  &authorID,
@@ -82,13 +82,13 @@ func BenchmarkListPoems(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ResetTimer()
 			for b.Loop() {
-				_, _ = repo.ListPoems(tc.pageSize, (tc.page-1)*tc.pageSize)
+				_, _, _ = repo.ListPoemsWithFilter(tc.pageSize, (tc.page-1)*tc.pageSize, nil, nil, nil)
 			}
 		})
 	}
 }
 
-// BenchmarkGetOrCreateAuthor benchmarks author creation/retrieval
+// BenchmarkGetOrCreateAuthor 测量作者查询或创建的性能。
 func BenchmarkGetOrCreateAuthor(b *testing.B) {
 	_, repo := setupBenchDB(b)
 
@@ -102,7 +102,7 @@ func BenchmarkGetOrCreateAuthor(b *testing.B) {
 		{"existing", "李白"},
 	}
 
-	// Pre-create for "existing" test
+	// 预先写入，供「已存在」的分支使用
 	_, _ = repo.GetOrCreateAuthor("李白", dynastyID)
 
 	for _, tc := range testCases {
@@ -115,7 +115,7 @@ func BenchmarkGetOrCreateAuthor(b *testing.B) {
 	}
 }
 
-// BenchmarkInsertPoem benchmarks poem insertion
+// BenchmarkInsertPoem 测量诗词写入的性能。
 func BenchmarkInsertPoem(b *testing.B) {
 	_, repo := setupBenchDB(b)
 
@@ -136,7 +136,7 @@ func BenchmarkInsertPoem(b *testing.B) {
 	}
 }
 
-// BenchmarkGetAuthorByID benchmarks author retrieval by ID
+// BenchmarkGetAuthorByID 测量按 ID 查询作者的性能。
 func BenchmarkGetAuthorByID(b *testing.B) {
 	_, repo := setupBenchDB(b)
 
@@ -149,15 +149,15 @@ func BenchmarkGetAuthorByID(b *testing.B) {
 	}
 }
 
-// BenchmarkGetRandomPoemMultipleTypes benchmarks random poem retrieval with multiple type filters
+// BenchmarkGetRandomPoemMultipleTypes 测量多体裁过滤下随机取词的性能。
 func BenchmarkGetRandomPoemMultipleTypes(b *testing.B) {
 	_, repo := setupBenchDB(b)
 
-	// Create test data
+	// 写入测试数据
 	dynastyID, _ := repo.GetOrCreateDynasty("唐")
 	authorID, _ := repo.GetOrCreateAuthor("李白", dynastyID)
 
-	// Create multiple poetry types
+	// 写入多个体裁
 	typeNames := []string{"五言绝句", "七言绝句", "五言律诗", "七言律诗"}
 	typeIDs := make([]int64, len(typeNames))
 	for i, typeName := range typeNames {
@@ -166,7 +166,7 @@ func BenchmarkGetRandomPoemMultipleTypes(b *testing.B) {
 		typeIDs[i] = ptype.ID
 	}
 
-	// Create poems for each type
+	// 为每个体裁写入诗词
 	for i, typeID := range typeIDs {
 		for j := 0; j < 100; j++ {
 			poem := &Poem{

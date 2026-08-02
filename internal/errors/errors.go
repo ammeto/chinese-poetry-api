@@ -1,4 +1,4 @@
-// Package errors provides standardized error types for the API.
+// Package errors 为 API 提供统一的错误类型。
 package errors
 
 import (
@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// Code represents an API error code.
+// Code 是 API 错误码。
 type Code string
 
 const (
@@ -17,7 +17,7 @@ const (
 	CodeRateLimited    Code = "RATE_LIMITED"
 )
 
-// APIError represents a structured API error.
+// APIError 是结构化的 API 错误。
 type APIError struct {
 	Code       Code   `json:"code"`
 	Message    string `json:"message"`
@@ -28,7 +28,7 @@ func (e *APIError) Error() string {
 	return e.Message
 }
 
-// Common errors
+// 预定义的常见错误
 var (
 	ErrNotFound       = &APIError{Code: CodeNotFound, Message: "Resource not found", HTTPStatus: http.StatusNotFound}
 	ErrInvalidID      = &APIError{Code: CodeInvalidID, Message: "Invalid ID format", HTTPStatus: http.StatusBadRequest}
@@ -37,7 +37,7 @@ var (
 	ErrRateLimited    = &APIError{Code: CodeRateLimited, Message: "Rate limit exceeded", HTTPStatus: http.StatusTooManyRequests}
 )
 
-// NotFound creates a not found error with a custom message.
+// NotFound 构造指定资源的「未找到」错误。
 func NotFound(resource string) *APIError {
 	return &APIError{
 		Code:       CodeNotFound,
@@ -46,7 +46,7 @@ func NotFound(resource string) *APIError {
 	}
 }
 
-// InvalidID creates an invalid ID error with context.
+// InvalidID 构造指定参数的「ID 非法」错误。
 func InvalidID(paramName string) *APIError {
 	return &APIError{
 		Code:       CodeInvalidID,
@@ -55,7 +55,7 @@ func InvalidID(paramName string) *APIError {
 	}
 }
 
-// InvalidRequest creates a bad request error with a custom message.
+// InvalidRequest 构造带自定义提示的「请求非法」错误。
 func InvalidRequest(message string) *APIError {
 	return &APIError{
 		Code:       CodeInvalidRequest,
@@ -64,7 +64,7 @@ func InvalidRequest(message string) *APIError {
 	}
 }
 
-// Internal creates an internal error, optionally logging the real error.
+// Internal 构造服务端内部错误，message 为空时使用默认提示。
 func Internal(message string) *APIError {
 	if message == "" {
 		message = "Internal server error"

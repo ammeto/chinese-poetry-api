@@ -36,7 +36,7 @@ func TestListDynasties(t *testing.T) {
 	router, repo := setupDynastyTestRouter(t)
 	handler := NewDynastyHandler(repo)
 
-	// Create test data
+	// 写入测试数据
 	_, _ = repo.GetOrCreateDynasty("唐")
 	_, _ = repo.GetOrCreateDynasty("宋")
 

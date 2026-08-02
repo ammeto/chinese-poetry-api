@@ -6,40 +6,40 @@ import (
 	"github.com/liuzl/gocc"
 )
 
-// s2t and t2s are initialized once in init() and are safe for concurrent use.
-// The underlying gocc.OpenCC.Convert method is thread-safe.
+// s2t 与 t2s 在 init() 中初始化一次，可并发使用：
+// 底层的 gocc.OpenCC.Convert 方法本身是并发安全的。
 var (
-	s2t *gocc.OpenCC // Simplified to Traditional (thread-safe)
-	t2s *gocc.OpenCC // Traditional to Simplified (thread-safe)
+	s2t *gocc.OpenCC // 简转繁
+	t2s *gocc.OpenCC // 繁转简
 )
 
 func init() {
 	var err error
 
-	// Initialize simplified to traditional converter
+	// 初始化简转繁转换器
 	s2t, err = gocc.New("s2t")
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize s2t converter: %v", err))
 	}
 
-	// Initialize traditional to simplified converter
+	// 初始化繁转简转换器
 	t2s, err = gocc.New("t2s")
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize t2s converter: %v", err))
 	}
 }
 
-// ToTraditional converts simplified Chinese to traditional Chinese
+// ToTraditional 把简体中文转为繁体。
 func ToTraditional(text string) (string, error) {
 	return s2t.Convert(text)
 }
 
-// ToSimplified converts traditional Chinese to simplified Chinese
+// ToSimplified 把繁体中文转为简体。
 func ToSimplified(text string) (string, error) {
 	return t2s.Convert(text)
 }
 
-// ToTraditionalArray converts an array of strings to traditional Chinese
+// ToTraditionalArray 批量把字符串转为繁体。
 func ToTraditionalArray(texts []string) ([]string, error) {
 	result := make([]string, len(texts))
 	for i, text := range texts {
@@ -52,7 +52,7 @@ func ToTraditionalArray(texts []string) ([]string, error) {
 	return result, nil
 }
 
-// ToSimplifiedArray converts an array of strings to simplified Chinese
+// ToSimplifiedArray 批量把字符串转为简体。
 func ToSimplifiedArray(texts []string) ([]string, error) {
 	result := make([]string, len(texts))
 	for i, text := range texts {
@@ -65,7 +65,7 @@ func ToSimplifiedArray(texts []string) ([]string, error) {
 	return result, nil
 }
 
-// ToTraditionalPointer converts a pointer to string to traditional Chinese
+// ToTraditionalPointer 把字符串指针指向的内容转为繁体，nil 或空串原样返回。
 func ToTraditionalPointer(text *string) (*string, error) {
 	if text == nil || *text == "" {
 		return text, nil
@@ -77,7 +77,7 @@ func ToTraditionalPointer(text *string) (*string, error) {
 	return &converted, nil
 }
 
-// ConvertPoemToTraditional converts all fields of a poem to traditional Chinese
+// ConvertPoemToTraditional 把一首诗词的各个字段统一转为繁体。
 func ConvertPoemToTraditional(title, author, content, rhythmic string) (string, string, string, string, error) {
 	t, err := ToTraditional(title)
 	if err != nil {

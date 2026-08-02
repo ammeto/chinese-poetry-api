@@ -2,7 +2,7 @@ package handler
 
 import "github.com/palemoky/chinese-poetry-api/internal/database"
 
-// formatDynasty formats a dynasty for API response, excluding created_at.
+// formatDynasty 把朝代整理成 API 响应结构，不含 created_at。
 func formatDynasty(d *database.Dynasty) map[string]any {
 	result := map[string]any{
 		"id":   d.ID,
@@ -20,7 +20,7 @@ func formatDynasty(d *database.Dynasty) map[string]any {
 	return result
 }
 
-// formatDynastyWithStats formats a dynasty with statistics for API response.
+// formatDynastyWithStats 在朝代基础上附加统计数据。
 func formatDynastyWithStats(d *database.DynastyWithStats) map[string]any {
 	result := formatDynasty(&d.Dynasty)
 	result["poem_count"] = d.PoemCount
@@ -28,7 +28,7 @@ func formatDynastyWithStats(d *database.DynastyWithStats) map[string]any {
 	return result
 }
 
-// formatAuthor formats an author for API response, excluding created_at.
+// formatAuthor 把作者整理成 API 响应结构，不含 created_at。
 func formatAuthor(a *database.Author) map[string]any {
 	result := map[string]any{
 		"id":   a.ID,
@@ -40,14 +40,14 @@ func formatAuthor(a *database.Author) map[string]any {
 	return result
 }
 
-// formatAuthorWithStats formats an author with statistics for API response.
+// formatAuthorWithStats 在作者基础上附加统计数据。
 func formatAuthorWithStats(a *database.AuthorWithStats) map[string]any {
 	result := formatAuthor(&a.Author)
 	result["poem_count"] = a.PoemCount
 	return result
 }
 
-// formatPoetryType formats a poetry type for API response, excluding created_at.
+// formatPoetryType 把体裁整理成 API 响应结构，不含 created_at。
 func formatPoetryType(t *database.PoetryType) map[string]any {
 	result := map[string]any{
 		"id":       t.ID,
@@ -66,14 +66,14 @@ func formatPoetryType(t *database.PoetryType) map[string]any {
 	return result
 }
 
-// formatPoetryTypeWithStats formats a poetry type with statistics for API response.
+// formatPoetryTypeWithStats 在体裁基础上附加统计数据。
 func formatPoetryTypeWithStats(t *database.PoetryTypeWithStats) map[string]any {
 	result := formatPoetryType(&t.PoetryType)
 	result["poem_count"] = t.PoemCount
 	return result
 }
 
-// formatPoem formats a poem for API response with nested objects.
+// formatPoem 把诗词整理成 API 响应结构，关联对象以嵌套形式呈现。
 func formatPoem(poem *database.Poem) map[string]any {
 	var typeData map[string]any
 	if poem.Type != nil {

@@ -8,22 +8,33 @@ import (
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 )
 
-// AuthorHandler handles author-related requests
+// AuthorHandler 处理作者相关的请求。
 type AuthorHandler struct {
 	repo *database.Repository
 }
 
-// NewAuthorHandler creates a new author handler
+// NewAuthorHandler 创建作者 handler。
 func NewAuthorHandler(repo *database.Repository) *AuthorHandler {
 	return &AuthorHandler{repo: repo}
 }
 
-// ListAuthors returns a list of authors
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// ListAuthors 分页返回作者列表。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
 func (h *AuthorHandler) ListAuthors(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang, queryPage, queryPageSize) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
-	pagination := ParsePagination(c)
+
+	pagination, ok := ParsePagination(c)
+	if !ok {
+		return
+	}
 
 	authors, err := repo.GetAuthorsWithStats(pagination.PageSize, pagination.Offset())
 	if err != nil {
@@ -45,10 +56,17 @@ func (h *AuthorHandler) ListAuthors(c *gin.Context) {
 	c.JSON(http.StatusOK, NewPaginationResponse(data, pagination, int64(total)))
 }
 
-// GetAuthor returns a specific author by ID
-// Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
+// GetAuthor 按 ID 返回指定作者。
+// 语言：?lang=zh-Hans（默认）或 ?lang=zh-Hant
 func (h *AuthorHandler) GetAuthor(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
 	id, ok := parseID(c, "id", "author")

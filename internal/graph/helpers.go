@@ -1,53 +1,67 @@
 package graph
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/palemoky/chinese-poetry-api/internal/database"
 	"github.com/palemoky/chinese-poetry-api/internal/helpers"
 )
 
-// Pagination holds parsed pagination parameters
+// Pagination 保存解析后的分页参数。
 type Pagination struct {
 	Page     int
 	PageSize int
 	Offset   int
 }
 
-// parsePagination extracts and validates pagination parameters with defaults.
-// Default: page=1, pageSize=20, max pageSize=100
-func parsePagination(page, pageSize *int) Pagination {
-	p := 1
-	if page != nil && *page > 0 {
+// 分页的默认值与上限，与 REST handler 保持一致。
+const (
+	defaultPage     = 1
+	defaultPageSize = 20
+	maxPageSize     = 100
+)
+
+// parsePagination 解析并校验分页参数，缺省时取默认值：page=1、pageSize=20，pageSize 上限 100。
+//
+// 越界取值一律报错而非截断，这样客户端传 pageSize: 1000 时能明确知道请求未被采纳。
+// 此外，截断的做法在 resolver 直接读取参数而不调用本函数的地方等于没有上限，
+// searchPoems 曾因此可以请求任意多的记录。
+func parsePagination(page, pageSize *int) (Pagination, error) {
+	p := defaultPage
+	if page != nil {
+		if *page < 1 {
+			return Pagination{}, fmt.Errorf("page must be at least 1, got %d", *page)
+		}
 		p = *page
 	}
-	ps := 20
-	if pageSize != nil && *pageSize > 0 {
-		ps = *pageSize
-		if ps > 100 {
-			ps = 100
+
+	ps := defaultPageSize
+	if pageSize != nil {
+		if *pageSize < 1 || *pageSize > maxPageSize {
+			return Pagination{}, fmt.Errorf("pageSize must be between 1 and %d, got %d", maxPageSize, *pageSize)
 		}
+		ps = *pageSize
 	}
+
 	return Pagination{
 		Page:     p,
 		PageSize: ps,
 		Offset:   (p - 1) * ps,
-	}
+	}, nil
 }
 
-// parseOptionalID parses an optional string ID to int64 pointer.
-// Uses common helper function.
+// parseOptionalID 把可选的字符串 ID 解析为 *int64。
 func parseOptionalID(id *string) (*int64, error) {
 	return helpers.ParseOptionalInt64(id)
 }
 
-// parseLang converts an optional Lang pointer to a Lang value.
-// Uses common helper function.
+// parseLang 把可选的 Lang 指针转换为 Lang 取值，为 nil 时返回默认语言。
 func parseLang(lang *database.Lang) database.Lang {
 	return helpers.ParseLangPointer(lang)
 }
 
-// buildPoemConnection creates a PoemConnection from poems slice and pagination info.
+// buildPoemConnection 根据诗词切片与分页信息构造 PoemConnection。
 func buildPoemConnection(poems []database.Poem, pag Pagination, totalCount int) *database.PoemConnection {
 	edges := make([]database.PoemEdge, len(poems))
 	for i, poem := range poems {
@@ -80,7 +94,7 @@ func buildPoemConnection(poems []database.Poem, pag Pagination, totalCount int) 
 	}
 }
 
-// buildAuthorConnection creates an AuthorConnection from authors slice and pagination info.
+// buildAuthorConnection 根据作者切片与分页信息构造 AuthorConnection。
 func buildAuthorConnection(authors []database.AuthorWithStats, pag Pagination, totalCount int) *database.AuthorConnection {
 	edges := make([]database.AuthorEdge, len(authors))
 	for i, author := range authors {
