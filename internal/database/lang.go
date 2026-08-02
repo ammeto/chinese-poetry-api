@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"io"
+	"strconv"
 )
 
 // Lang represents the language variant for Chinese text
@@ -95,7 +96,9 @@ func (l Lang) MarshalGQL(w io.Writer) {
 	if l == LangHant {
 		name = gqlLangHant
 	}
-	fmt.Fprintf(w, "%q", name)
+	// The interface has no error return, and gqlgen's writer collects failures
+	// on the response itself, so there is nothing to do with a write error here.
+	_, _ = io.WriteString(w, strconv.Quote(name))
 }
 
 // Table name helpers - these help construct table names with language suffix

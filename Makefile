@@ -1,4 +1,4 @@
-.PHONY: help build build-processor build-server clean test run-server run-processor process-data docker-build docker-run graphql-gen deps tidy fmt lint install dev
+.PHONY: help build build-processor build-server clean test run-server run-processor process-data docker-build docker-run graphql-gen deps tidy fmt gofumpt lint install dev
 
 # 默认目标
 .DEFAULT_GOAL := help
@@ -120,10 +120,22 @@ tidy:
 	@echo "$(GREEN)✓ 依赖整理完成$(NC)"
 
 ## fmt: 格式化代码
+# gofumpt，而非 go fmt：.golangci.yml 启用的格式化器是 gofumpt，它比 gofmt 严格，
+# 只跑 go fmt 产出的代码仍会被 lint 判为未格式化。
 fmt:
 	@echo "$(BLUE)格式化代码...$(NC)"
-	@go fmt ./...
+	@$(MAKE) --no-print-directory gofumpt
 	@echo "$(GREEN)✓ 代码格式化完成$(NC)"
+
+# gofumpt: 对全仓库执行 gofumpt -w，未安装时退回 go fmt 并提示
+gofumpt:
+	@if command -v gofumpt >/dev/null 2>&1; then \
+		gofumpt -w . ; \
+	else \
+		echo "$(YELLOW)gofumpt 未安装，退回 go fmt（结果可能仍不满足 lint）$(NC)"; \
+		echo "安装: go install mvdan.cc/gofumpt@latest"; \
+		go fmt ./... >/dev/null; \
+	fi
 
 ## lint: 运行linter
 lint:
@@ -179,9 +191,13 @@ fuzz:
 	@echo "$(GREEN)✓ 模糊测试完成$(NC)"
 
 ## graphql-gen: 生成GraphQL代码
+# gqlgen 的输出不满足 gofumpt（例如把 resolver 类型写成多条独立的 type 声明，
+# gofumpt 要求合并为一个 type 分组），所以生成后必须补一次格式化，否则 lint 会红。
+# 注意 golangci-lint fmt 修不了这一条，必须用 gofumpt。
 graphql-gen:
 	@echo "$(BLUE)生成GraphQL代码...$(NC)"
 	@go run github.com/99designs/gqlgen generate
+	@$(MAKE) --no-print-directory gofumpt
 	@echo "$(GREEN)✓ GraphQL代码生成完成$(NC)"
 
 ## run-server: 运行API服务器
