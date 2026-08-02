@@ -47,10 +47,13 @@ func createTestPoem(t *testing.T, repo *database.Repository, id int64, title, co
 	require.NoError(t, err)
 
 	// 写入诗词
+	contentJSON, err := json.Marshal([]string{content})
+	require.NoError(t, err)
+
 	poem := &database.Poem{
 		ID:        id,
 		Title:     title,
-		Content:   datatypes.JSON([]byte(content)),
+		Content:   datatypes.JSON(contentJSON),
 		AuthorID:  &authorID,
 		DynastyID: &dynastyID,
 	}
