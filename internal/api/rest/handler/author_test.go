@@ -185,40 +185,40 @@ func TestPaginationBoundariesREST(t *testing.T) {
 		expectedStatus int
 		checkResponse  func(*testing.T, map[string]any)
 	}{
+		// Out-of-range and non-numeric pagination now fails loudly. It used to be
+		// coerced to the defaults, so a client asking for page_size=500 got 100
+		// back with a 200 and no indication its request had been rewritten.
 		{
-			name:           "page_size 0 defaults to 20",
+			name:           "page_size 0 is rejected",
 			query:          "?page_size=0",
-			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, resp map[string]any) {
-				pagination := resp["pagination"].(map[string]any)
-				assert.Equal(t, float64(20), pagination["page_size"])
-			},
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:           "page 0 defaults to 1",
+			name:           "page 0 is rejected",
 			query:          "?page=0",
-			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, resp map[string]any) {
-				pagination := resp["pagination"].(map[string]any)
-				assert.Equal(t, float64(1), pagination["page"])
-			},
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:           "negative page defaults to 1",
+			name:           "negative page is rejected",
 			query:          "?page=-1",
-			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, resp map[string]any) {
-				pagination := resp["pagination"].(map[string]any)
-				assert.Equal(t, float64(1), pagination["page"])
-			},
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:           "very large page_size is capped at 100",
+			name:           "page_size above the maximum is rejected",
 			query:          "?page_size=500",
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "non-numeric page is rejected",
+			query:          "?page=abc",
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "unknown query parameter is rejected",
+			query:          "?pageSize=10",
+			expectedStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, resp map[string]any) {
-				pagination := resp["pagination"].(map[string]any)
-				assert.Equal(t, float64(100), pagination["page_size"])
+				assert.Contains(t, resp["error"], "pageSize")
 			},
 		},
 		{

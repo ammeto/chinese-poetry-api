@@ -23,14 +23,34 @@ func (l Lang) Default() Lang {
 	return LangHans
 }
 
+// langAliases maps every accepted spelling of a language variant to its Lang.
+var langAliases = map[string]Lang{
+	"zh-Hans":    LangHans,
+	"zh_Hans":    LangHans,
+	"hans":       LangHans,
+	"sc":         LangHans,
+	"simplified": LangHans,
+
+	"zh-Hant":     LangHant,
+	"zh_Hant":     LangHant,
+	"hant":        LangHant,
+	"tc":          LangHant,
+	"traditional": LangHant,
+}
+
 // ParseLang parses a string to Lang, defaulting to simplified Chinese
 func ParseLang(s string) Lang {
-	switch s {
-	case "zh-Hant", "zh_Hant", "hant", "tc", "traditional":
-		return LangHant
-	default:
-		return LangHans
+	if lang, ok := langAliases[s]; ok {
+		return lang
 	}
+	return LangHans
+}
+
+// LookupLang parses s like ParseLang but reports whether s was a recognised
+// spelling, letting callers reject a typo instead of silently serving zh-Hans.
+func LookupLang(s string) (Lang, bool) {
+	lang, ok := langAliases[s]
+	return lang, ok
 }
 
 // Table name helpers - these help construct table names with language suffix

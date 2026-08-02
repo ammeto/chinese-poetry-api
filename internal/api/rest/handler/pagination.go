@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"strconv"
+	"math"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,25 +17,32 @@ func (p PaginationParams) Offset() int {
 	return (p.Page - 1) * p.PageSize
 }
 
-// ParsePagination parses pagination parameters from context
-func ParsePagination(c *gin.Context) PaginationParams {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+// Pagination defaults and bounds.
+const (
+	DefaultPage     = 1
+	DefaultPageSize = 20
+	MaxPageSize     = 100
+)
 
-	if page < 1 {
-		page = 1
+// ParsePagination parses pagination parameters from context. It responds 400
+// and returns false if either parameter is not an integer or is out of range;
+// invalid values used to be coerced to the defaults, so a client sending
+// page=abc or page_size=1000 got a 200 for a page it never asked for.
+func ParsePagination(c *gin.Context) (PaginationParams, bool) {
+	page, ok := parseIntQuery(c, queryPage, DefaultPage, 1, math.MaxInt32)
+	if !ok {
+		return PaginationParams{}, false
 	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
+
+	pageSize, ok := parseIntQuery(c, queryPageSize, DefaultPageSize, 1, MaxPageSize)
+	if !ok {
+		return PaginationParams{}, false
 	}
 
 	return PaginationParams{
 		Page:     page,
 		PageSize: pageSize,
-	}
+	}, true
 }
 
 // NewPaginationResponse creates a standardized pagination response

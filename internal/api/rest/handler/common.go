@@ -31,10 +31,23 @@ func respondOK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, gin.H{"data": data})
 }
 
-// parseLang extracts language variant from query parameter.
-// Supported values: "zh-Hans" (simplified), "zh-Hant" (traditional)
-// Defaults to simplified Chinese (zh-Hans).
-func parseLang(c *gin.Context) database.Lang {
-	lang := c.DefaultQuery("lang", "zh-Hans")
-	return database.ParseLang(lang)
+// parseLang extracts the language variant from the lang query parameter.
+// Supported values: "zh-Hans" (simplified), "zh-Hant" (traditional), plus the
+// aliases in database.LookupLang. Defaults to simplified Chinese when absent.
+//
+// An unrecognised value responds 400 and returns false rather than falling back
+// to simplified: ?lang=en used to return simplified text with a 200, which is
+// indistinguishable from a working request.
+func parseLang(c *gin.Context) (database.Lang, bool) {
+	raw := c.Query(queryLang)
+	if raw == "" {
+		return database.LangHans, true
+	}
+
+	lang, ok := database.LookupLang(raw)
+	if !ok {
+		respondError(c, http.StatusBadRequest, "unsupported lang "+strconv.Quote(raw)+"; supported: zh-Hans, zh-Hant")
+		return "", false
+	}
+	return lang, true
 }

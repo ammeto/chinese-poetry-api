@@ -96,7 +96,14 @@ func (r *queryResolver) Poems(ctx context.Context, lang *database.Lang, page *in
 		return nil, err
 	}
 
-	poems, totalCount, err := r.Repo.ListPoemsWithFilter(pag.PageSize, pag.Offset, dynastyIDInt, authorIDInt, typeIDInt)
+	// The GraphQL schema exposes a single typeID; the repository takes a slice
+	// because the REST endpoint accepts repeated type_id params.
+	var typeIDs []int64
+	if typeIDInt != nil {
+		typeIDs = []int64{*typeIDInt}
+	}
+
+	poems, totalCount, err := r.Repo.ListPoemsWithFilter(pag.PageSize, pag.Offset, dynastyIDInt, authorIDInt, typeIDs)
 	if err != nil {
 		return nil, err
 	}

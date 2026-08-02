@@ -36,8 +36,17 @@ func HealthHandler(db *database.DB) gin.HandlerFunc {
 }
 
 // StatsHandler returns overall statistics
+//
+// Takes no query parameters - notably not lang, since GetStatistics counts rows
+// that are the same in both variants. /health is deliberately left permissive
+// instead: probes routinely append cache-busting params, and rejecting those
+// would turn a healthy service into a failing health check.
 func StatsHandler(repo *database.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !checkQueryParams(c) {
+			return
+		}
+
 		stats, err := repo.GetStatistics()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{

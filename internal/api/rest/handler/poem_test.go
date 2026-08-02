@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -136,6 +137,102 @@ func TestListPoems(t *testing.T) {
 	}
 }
 
+// TestListPoemsFilters covers the filters on /poems, which previously accepted
+// every spelling and silently ignored all of them: dynasty_id=6, dynasty=唐 and
+// dynastyId=6 all returned 200 over the unfiltered corpus, so a client had no
+// way to notice it had got the parameter wrong.
+func TestListPoemsFilters(t *testing.T) {
+	router, repo := setupPoemTestRouter(t)
+	handler := NewPoemHandler(repo)
+
+	tangID, err := repo.GetOrCreateDynasty("唐")
+	require.NoError(t, err)
+	songID, err := repo.GetOrCreateDynasty("宋")
+	require.NoError(t, err)
+	libaiID, err := repo.GetOrCreateAuthor("李白", tangID)
+	require.NoError(t, err)
+	sushiID, err := repo.GetOrCreateAuthor("苏轼", songID)
+	require.NoError(t, err)
+
+	// Poetry types are pre-seeded by Migrate; 11 and 12 are 五言绝句/七言绝句.
+	jueju5, jueju7 := int64(11), int64(12)
+	poems := []*database.Poem{
+		{ID: 1, Title: "静夜思", AuthorID: &libaiID, DynastyID: &tangID, TypeID: &jueju5},
+		{ID: 2, Title: "早发白帝城", AuthorID: &libaiID, DynastyID: &tangID, TypeID: &jueju7},
+		{ID: 3, Title: "题西林壁", AuthorID: &sushiID, DynastyID: &songID, TypeID: &jueju7},
+	}
+	for _, p := range poems {
+		p.Content = datatypes.JSON([]byte(`["内容"]`))
+		require.NoError(t, repo.InsertPoem(p))
+	}
+
+	router.GET("/poems", handler.ListPoems)
+
+	// titles runs a request and returns the titles it produced, so each case
+	// asserts on which poems came back rather than only on the status code.
+	titles := func(t *testing.T, query string, wantStatus int) []string {
+		req := httptest.NewRequest(http.MethodGet, "/poems"+query, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, wantStatus, w.Code, "body: %s", w.Body.String())
+
+		if wantStatus != http.StatusOK {
+			return nil
+		}
+
+		var resp struct {
+			Data []struct {
+				Title string `json:"title"`
+			} `json:"data"`
+			Pagination struct {
+				Total int `json:"total"`
+			} `json:"pagination"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+		got := make([]string, len(resp.Data))
+		for i, d := range resp.Data {
+			got[i] = d.Title
+		}
+		// The reported total must describe the filtered set, not the corpus.
+		assert.Equal(t, len(got), resp.Pagination.Total)
+		return got
+	}
+
+	t.Run("filters actually filter", func(t *testing.T) {
+		assert.Equal(t, []string{"静夜思", "早发白帝城", "题西林壁"}, titles(t, "", http.StatusOK))
+		assert.Equal(t, []string{"静夜思", "早发白帝城"}, titles(t, "?dynasty_id="+strconv.FormatInt(tangID, 10), http.StatusOK))
+		assert.Equal(t, []string{"静夜思", "早发白帝城"}, titles(t, "?dynasty=唐", http.StatusOK))
+		assert.Equal(t, []string{"题西林壁"}, titles(t, "?author=苏轼", http.StatusOK))
+		assert.Equal(t, []string{"静夜思"}, titles(t, "?author=李白&type_id=11", http.StatusOK))
+	})
+
+	t.Run("repeated type_id is combined with OR", func(t *testing.T) {
+		assert.Equal(t, []string{"静夜思", "早发白帝城", "题西林壁"}, titles(t, "?type_id=11&type_id=12", http.StatusOK))
+		assert.Equal(t, []string{"早发白帝城", "题西林壁"}, titles(t, "?type_id=12", http.StatusOK))
+	})
+
+	t.Run("misspelled and malformed filters are rejected", func(t *testing.T) {
+		// The GraphQL spelling leaking into REST is the motivating case.
+		titles(t, "?dynastyId=6", http.StatusBadRequest)
+		titles(t, "?dynasty_ids=6", http.StatusBadRequest)
+		titles(t, "?dynasty_id=abc", http.StatusBadRequest)
+		titles(t, "?type_id=abc", http.StatusBadRequest)
+		titles(t, "?author_id=1.5", http.StatusBadRequest)
+		titles(t, "?lang=en", http.StatusBadRequest)
+	})
+
+	t.Run("unknown filter values are 404, not a silent full listing", func(t *testing.T) {
+		titles(t, "?dynasty=不存在的朝代", http.StatusNotFound)
+		titles(t, "?author=不存在的作者", http.StatusNotFound)
+	})
+
+	t.Run("a known filter value with no poems is an empty page, not a 404", func(t *testing.T) {
+		// 元 is seeded by the schema but has no poems in this fixture.
+		assert.Empty(t, titles(t, "?dynasty=元", http.StatusOK))
+	})
+}
+
 func TestSearchPoems(t *testing.T) {
 	router, repo := setupPoemTestRouter(t)
 	handler := NewPoemHandler(repo)
@@ -194,11 +291,27 @@ func TestSearchPoems(t *testing.T) {
 		{
 			name:           "page_size exceeds limit",
 			query:          "?q=test&page_size=200",
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, resp map[string]any) {
-				// Should be capped at 100
-				pagination := resp["pagination"].(map[string]any)
-				assert.Equal(t, float64(100), pagination["page_size"])
+				assert.Contains(t, resp["error"], "page_size")
+			},
+		},
+		{
+			// Unknown search types fell through to "all", so a typo searched
+			// everything and looked like a working narrow search.
+			name:           "unknown search type is rejected",
+			query:          "?q=李白&type=titel",
+			expectedStatus: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, resp map[string]any) {
+				assert.Contains(t, resp["error"], "titel")
+			},
+		},
+		{
+			name:           "unknown query parameter is rejected",
+			query:          "?q=李白&searchType=author",
+			expectedStatus: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, resp map[string]any) {
+				assert.Contains(t, resp["error"], "searchType")
 			},
 		},
 	}

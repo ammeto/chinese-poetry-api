@@ -21,7 +21,14 @@ func NewDynastyHandler(repo *database.Repository) *DynastyHandler {
 // ListDynasties returns a list of dynasties
 // Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
 func (h *DynastyHandler) ListDynasties(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
 	dynasties, err := repo.GetDynastiesWithStats()
@@ -41,7 +48,14 @@ func (h *DynastyHandler) ListDynasties(c *gin.Context) {
 // GetDynasty returns a specific dynasty by ID
 // Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
 func (h *DynastyHandler) GetDynasty(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
 	id, ok := parseID(c, "id", "dynasty")

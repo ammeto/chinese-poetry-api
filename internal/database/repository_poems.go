@@ -151,11 +151,13 @@ func (r *Repository) loadPoemRelations(poems []Poem) {
 }
 
 // ListPoemsWithFilter returns a paginated list of poems with optional filters.
+// Multiple typeIDs are combined with OR, matching GetRandomPoem's behaviour.
+//
 // Results are ordered by id ASC: poem ids are assigned sequentially at import
 // time (see processor.Pipeline), so ascending id follows the order of the source
 // corpus rather than any notion of recency. Every paginated listing in this
 // repository uses the same order so REST and GraphQL agree on what "page N" is.
-func (r *Repository) ListPoemsWithFilter(limit, offset int, dynastyID, authorID, typeID *int64) ([]Poem, int, error) {
+func (r *Repository) ListPoemsWithFilter(limit, offset int, dynastyID, authorID *int64, typeIDs []int64) ([]Poem, int, error) {
 	query := r.db.Table(r.poemsTable())
 
 	// Apply filters
@@ -165,8 +167,8 @@ func (r *Repository) ListPoemsWithFilter(limit, offset int, dynastyID, authorID,
 	if authorID != nil {
 		query = query.Where("author_id = ?", *authorID)
 	}
-	if typeID != nil {
-		query = query.Where("type_id = ?", *typeID)
+	if len(typeIDs) > 0 {
+		query = query.Where("type_id IN ?", typeIDs)
 	}
 
 	// Get total count

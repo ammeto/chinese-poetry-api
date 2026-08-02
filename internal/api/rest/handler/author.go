@@ -21,9 +21,20 @@ func NewAuthorHandler(repo *database.Repository) *AuthorHandler {
 // ListAuthors returns a list of authors
 // Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
 func (h *AuthorHandler) ListAuthors(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang, queryPage, queryPageSize) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
-	pagination := ParsePagination(c)
+
+	pagination, ok := ParsePagination(c)
+	if !ok {
+		return
+	}
 
 	authors, err := repo.GetAuthorsWithStats(pagination.PageSize, pagination.Offset())
 	if err != nil {
@@ -48,7 +59,14 @@ func (h *AuthorHandler) ListAuthors(c *gin.Context) {
 // GetAuthor returns a specific author by ID
 // Supports ?lang=zh-Hans (default) or ?lang=zh-Hant
 func (h *AuthorHandler) GetAuthor(c *gin.Context) {
-	lang := parseLang(c)
+	if !checkQueryParams(c, queryLang) {
+		return
+	}
+
+	lang, ok := parseLang(c)
+	if !ok {
+		return
+	}
 	repo := h.repo.WithLang(lang)
 
 	id, ok := parseID(c, "id", "author")
